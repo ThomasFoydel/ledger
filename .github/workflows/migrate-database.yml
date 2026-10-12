@@ -1,0 +1,33 @@
+name: Migrate Database
+
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install EF Core CLI
+        run: dotnet tool install dotnet-ef --version 8.0.31
+
+      - name: Restore dependencies
+        run: dotnet restore Ledger.sln
+
+      - name: Apply migrations to Neon
+        env:
+          ConnectionStrings__Ledger: ${{ secrets.NEON_CONNECTION_STRING }}
+        run: |
+          dotnet ef database update \
+            --project src/Ledger.Api \
+            --startup-project src/Ledger.Api \
+            --configuration Release \
+            --connection "$ConnectionStrings__Ledger"
