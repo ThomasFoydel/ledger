@@ -1,4 +1,10 @@
+using Ledger.Api.Data;
+using Microsoft.EntityFrameworkCore;
+using Ledger.Api.Endpoints;
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContext<LedgerDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("Ledger")));
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -20,6 +26,8 @@ app.MapGet("/health", () => Results.Ok(new
 }))
 .WithName("GetHealth")
 .WithOpenApi();
+
+app.MapProductEndpoints();
 
 app.Run();
 
