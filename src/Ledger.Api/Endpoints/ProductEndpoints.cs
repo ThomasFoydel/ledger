@@ -56,7 +56,8 @@ public static class ProductEndpoints
             await db.SaveChangesAsync(ct);
 
             return Results.Created($"/products/{product.Id}", ToResponse(product));
-        });
+        })
+        .RequireAuthorization();
 
         app.MapPut("/products/{id:guid}", async (Guid id, UpdateProductRequest request, LedgerDbContext db, CancellationToken ct) =>
         {
@@ -76,7 +77,8 @@ public static class ProductEndpoints
             await db.SaveChangesAsync(ct);
 
             return Results.Ok(ToResponse(product));
-        });
+        })
+        .RequireAuthorization();
 
         app.MapDelete("/products/{id:guid}", async (Guid id, LedgerDbContext db, CancellationToken ct) =>
         {
@@ -89,7 +91,8 @@ public static class ProductEndpoints
             await db.SaveChangesAsync(ct);
 
             return Results.NoContent();
-        });
+        })
+        .RequireAuthorization();
 
         return app;
     }
