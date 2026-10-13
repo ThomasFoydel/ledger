@@ -1,15 +1,20 @@
+
 using Ledger.Api.Models;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Ledger.Api.Data;
 
 public class LedgerDbContext(DbContextOptions<LedgerDbContext> options)
-  : DbContext(options)
+  : IdentityDbContext<IdentityUser>(options)
 {
   public DbSet<Product> Products => Set<Product>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
+    base.OnModelCreating(modelBuilder);
+
     modelBuilder.Entity<Product>(entity =>
     {
       entity.HasKey(product => product.Id);
