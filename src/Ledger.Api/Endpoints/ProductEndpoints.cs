@@ -57,7 +57,7 @@ public static class ProductEndpoints
 
             return Results.Created($"/products/{product.Id}", ToResponse(product));
         })
-        .RequireAuthorization();
+        .RequireAuthorization("OwnerOnly");
 
         app.MapPut("/products/{id:guid}", async (Guid id, UpdateProductRequest request, LedgerDbContext db, CancellationToken ct) =>
         {
@@ -78,7 +78,7 @@ public static class ProductEndpoints
 
             return Results.Ok(ToResponse(product));
         })
-        .RequireAuthorization();
+        .RequireAuthorization("OwnerOnly");
 
         app.MapDelete("/products/{id:guid}", async (Guid id, LedgerDbContext db, CancellationToken ct) =>
         {
@@ -92,7 +92,7 @@ public static class ProductEndpoints
 
             return Results.NoContent();
         })
-        .RequireAuthorization();
+        .RequireAuthorization("OwnerOnly");
 
         return app;
     }

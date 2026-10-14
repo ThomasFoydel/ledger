@@ -140,6 +140,25 @@ public class ProductEndpointTests : IDisposable
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    [Fact]
+    public async Task CreateProduct_WithoutOwnerRole_ReturnsForbidden()
+    {
+        _client.DefaultRequestHeaders.Remove("X-Test-Auth");
+        _client.DefaultRequestHeaders.Add("X-Test-Auth", "regular-user");
+
+        var response = await _client.PostAsJsonAsync(
+            "/products",
+            new
+            {
+                Name = "Lavender Soap",
+                Description = "Test soap",
+                Price = 7.50m
+            }
+        );
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     private void AuthenticateAsOwner()
     {
         _client.DefaultRequestHeaders.Remove("X-Test-Auth");
@@ -164,17 +183,21 @@ public sealed class TestAuthenticationHandler(
 {
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        if (!Request.Headers.TryGetValue("X-Test-Auth", out var value)
-            || value != "owner")
+        if (!Request.Headers.TryGetValue("X-Test-Auth", out var value))
         {
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.NameIdentifier, "test-owner"),
-            new Claim(ClaimTypes.Name, "owner")
+            new (ClaimTypes.NameIdentifier, $"test-{value}"),
+            new (ClaimTypes.Name, value.ToString()),
         };
+
+        if (value == "owner")
+        {
+            claims.Add(new Claim(ClaimTypes.Role, "Owner"));
+        }
 
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         var principal = new ClaimsPrincipal(identity);
