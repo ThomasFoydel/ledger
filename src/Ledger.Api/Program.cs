@@ -56,6 +56,7 @@ app.MapGet("/health", () => Results.Ok(new
 .WithName("GetHealth")
 .WithOpenApi();
 
+app.MapAuthEndpoints();
 app.MapProductEndpoints();
 
 app.Run();
