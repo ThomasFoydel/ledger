@@ -22,6 +22,15 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore Ledger.sln
 
+      - name: Verify Neon connection string
+        env:
+          CONNECTION_STRING: ${{ secrets.NEON_CONNECTION_STRING }}
+        run: |
+          if [ -z "$CONNECTION_STRING" ]; then
+            echo "::error::NEON_CONNECTION_STRING is not configured."
+            exit 1
+          fi
+
       - name: Apply migrations to Neon
         env:
           ConnectionStrings__Ledger: ${{ secrets.NEON_CONNECTION_STRING }}
