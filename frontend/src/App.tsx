@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createProduct,
   deleteProduct,
@@ -25,11 +25,24 @@ function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
+  const [search, setSearch] = useState("");
   const [form, setForm] = useState<ProductInput>(emptyProduct);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  const filteredProducts = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+
+    if (!query) return products;
+
+    return products.filter(
+      (product) =>
+        product.name.toLocaleLowerCase().includes(query) ||
+        (product.description ?? "").toLocaleLowerCase().includes(query),
+    );
+  }, [products, search]);
 
   const loadProducts = useCallback(async () => {
     setProducts(await getProducts());
@@ -75,9 +88,7 @@ function App() {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
 
-      if (currentUser) {
-        await loadProducts();
-      }
+      if (currentUser) await loadProducts();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in.");
     } finally {
@@ -93,6 +104,7 @@ function App() {
       await logout();
       setUser(null);
       setProducts([]);
+      setSearch("");
       resetForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign out.");
@@ -155,13 +167,9 @@ function App() {
         current.filter((item) => item.id !== product.id),
       );
 
-      if (editingId === product.id) {
-        resetForm();
-      }
+      if (editingId === product.id) resetForm();
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to delete product.",
-      );
+      setError(err instanceof Error ? err.message : "Unable to delete product.");
     } finally {
       setSubmitting(false);
     }
@@ -203,11 +211,7 @@ function App() {
               onChange={(event) => setPassword(event.target.value)}
             />
 
-            {error && (
-              <p className="error-message" role="alert">
-                {error}
-              </p>
-            )}
+            {error && <p className="error-message" role="alert">{error}</p>}
 
             <button type="submit" disabled={submitting}>
               {submitting ? "Signing in…" : "Sign in"}
@@ -239,11 +243,7 @@ function App() {
         </div>
       </header>
 
-      {error && (
-        <p className="error-message" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <p className="error-message" role="alert">{error}</p>}
 
       <section className="product-editor">
         <h2>{editingId ? "Edit product" : "Add product"}</h2>
@@ -310,17 +310,31 @@ function App() {
         <div className="section-heading">
           <h2>Products</h2>
           <span>
-            {products.length} {products.length === 1 ? "product" : "products"}
+            {filteredProducts.length} of {products.length}{" "}
+            {products.length === 1 ? "product" : "products"}
           </span>
         </div>
+
+        <label htmlFor="product-search">Search products</label>
+        <input
+          id="product-search"
+          type="search"
+          placeholder="Search by name or description…"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
 
         {products.length === 0 ? (
           <p className="empty-state">
             No products yet. Add your first product above.
           </p>
+        ) : filteredProducts.length === 0 ? (
+          <p className="empty-state">
+            No products match “{search}”. Try another search.
+          </p>
         ) : (
           <div className="product-grid">
-            {products.map((product) => (
+            {filteredProducts.map((product) => (
               <article className="product-card" key={product.id}>
                 <div className="product-card-heading">
                   <h3>{product.name}</h3>
