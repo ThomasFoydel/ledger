@@ -84,6 +84,19 @@ public static class AuthEndpoints
             return Results.NoContent();
         });
 
+        app.MapGet("/auth/me", async (
+            UserManager<IdentityUser> userManager,
+            HttpContext context) =>
+        {
+            var user = await userManager.GetUserAsync(context.User);
+
+            if (user is null)
+                return Results.Unauthorized();
+
+            return Results.Ok(new { email = user.Email });
+        })
+        .RequireAuthorization();
+
         return app;
     }
 
