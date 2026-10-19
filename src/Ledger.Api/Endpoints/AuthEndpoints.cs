@@ -1,4 +1,3 @@
-
 using Ledger.Api.Data;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
@@ -10,7 +9,9 @@ public static class AuthEndpoints
     public static IEndpointRouteBuilder MapAuthEndpoints(
         this IEndpointRouteBuilder app)
     {
-        app.MapGet("/auth/csrf", (IAntiforgery antiforgery, HttpContext context) =>
+        app.MapGet("/auth/csrf", (
+            IAntiforgery antiforgery,
+            HttpContext context) =>
         {
             var tokens = antiforgery.GetAndStoreTokens(context);
 
@@ -93,7 +94,13 @@ public static class AuthEndpoints
             if (user is null)
                 return Results.Unauthorized();
 
-            return Results.Ok(new { email = user.Email });
+            var roles = await userManager.GetRolesAsync(user);
+
+            return Results.Ok(new
+            {
+                email = user.Email,
+                isAdmin = roles.Contains("Owner")
+            });
         })
         .RequireAuthorization();
 
