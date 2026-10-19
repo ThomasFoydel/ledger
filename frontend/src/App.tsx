@@ -18,6 +18,7 @@ const emptyProduct: ProductInput = {
   name: "",
   description: "",
   price: 0,
+  quantityOnHand: 0,
 };
 
 function App() {
@@ -123,6 +124,7 @@ function App() {
       name: product.name,
       description: product.description ?? "",
       price: product.price,
+      quantityOnHand: product.quantityOnHand,
     });
     setEditingId(product.id);
     setError("");
@@ -137,6 +139,7 @@ function App() {
       name: form.name.trim(),
       description: form.description.trim(),
       price: Number(form.price),
+      quantityOnHand: Number(form.quantityOnHand),
     };
 
     try {
@@ -211,7 +214,11 @@ function App() {
               onChange={(event) => setPassword(event.target.value)}
             />
 
-            {error && <p className="error-message" role="alert">{error}</p>}
+            {error && (
+              <p className="error-message" role="alert">
+                {error}
+              </p>
+            )}
 
             <button type="submit" disabled={submitting}>
               {submitting ? "Signing in…" : "Sign in"}
@@ -243,7 +250,11 @@ function App() {
         </div>
       </header>
 
-      {error && <p className="error-message" role="alert">{error}</p>}
+      {error && (
+        <p className="error-message" role="alert">
+          {error}
+        </p>
+      )}
 
       <section className="product-editor">
         <h2>{editingId ? "Edit product" : "Add product"}</h2>
@@ -280,6 +291,22 @@ function App() {
             value={form.price}
             onChange={(event) =>
               setForm({ ...form, price: Number(event.target.value) })
+            }
+          />
+
+          <label htmlFor="product-quantity">Quantity on hand</label>
+          <input
+            id="product-quantity"
+            type="number"
+            min="0"
+            step="1"
+            required
+            value={form.quantityOnHand}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                quantityOnHand: Number(event.target.value),
+              })
             }
           />
 
@@ -348,6 +375,10 @@ function App() {
 
                 <p className="product-description">
                   {product.description || "No description provided."}
+                </p>
+
+                <p>
+                  <strong>In stock:</strong> {product.quantityOnHand}
                 </p>
 
                 <div className="product-actions">

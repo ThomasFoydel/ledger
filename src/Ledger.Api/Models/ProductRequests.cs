@@ -3,13 +3,15 @@ namespace Ledger.Api.Models;
 public sealed record CreateProductRequest(
     string? Name,
     string? Description,
-    decimal Price
+    decimal Price,
+    int QuantityOnHand
 );
 
 public sealed record UpdateProductRequest(
     string? Name,
     string? Description,
-    decimal Price
+    decimal Price,
+    int QuantityOnHand
 );
 
 public sealed record ProductResponse(
@@ -18,5 +20,6 @@ public sealed record ProductResponse(
     string? Description,
     decimal Price,
     bool IsActive,
-    DateTime CreatedAtUtcs
+    DateTime CreatedAtUtcs,
+    int QuantityOnHand
 );

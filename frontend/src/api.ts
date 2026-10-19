@@ -15,12 +15,14 @@ export type Product = {
   price: number;
   isActive: boolean;
   createdAtUtcs: string;
+  quantityOnHand: number;
 };
 
 export type ProductInput = {
   name: string;
   description: string;
   price: number;
+  quantityOnHand: number;
 };
 
 async function getCsrfToken(): Promise<string> {

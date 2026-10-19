@@ -22,6 +22,7 @@ const sampleProduct: Product = {
   price: 8.5,
   isActive: true,
   createdAtUtcs: '2026-01-01T12:00:00Z',
+  quantityOnHand: 12,
 }
 
 async function renderSignedIn(products: Product[] = []) {
@@ -70,10 +71,7 @@ describe('App authentication', () => {
       await screen.findByLabelText('Email'),
       'owner@example.com',
     )
-    await user.type(
-      screen.getByLabelText('Password'),
-      'example-password',
-    )
+    await user.type(screen.getByLabelText('Password'), 'example-password')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(
@@ -99,10 +97,7 @@ describe('App authentication', () => {
       await screen.findByLabelText('Email'),
       'owner@example.com',
     )
-    await user.type(
-      screen.getByLabelText('Password'),
-      'wrong-password',
-    )
+    await user.type(screen.getByLabelText('Password'), 'wrong-password')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -112,7 +107,7 @@ describe('App authentication', () => {
 })
 
 describe('Product management', () => {
-  it('displays products and their prices', async () => {
+  it('displays products, prices, and inventory quantities', async () => {
     await renderSignedIn([sampleProduct])
 
     expect(
@@ -120,6 +115,9 @@ describe('Product management', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('$8.50')).toBeInTheDocument()
     expect(screen.getByText('Handmade lavender bar')).toBeInTheDocument()
+    expect(screen.getByText('In stock:').parentElement).toHaveTextContent(
+      'In stock: 12',
+    )
   })
 
   it('creates a product and refreshes the list', async () => {
@@ -148,6 +146,7 @@ describe('Product management', () => {
         name: 'Lavender Soap',
         description: 'Handmade lavender bar',
         price: 8.5,
+        quantityOnHand: 0,
       })
     })
 
@@ -188,6 +187,7 @@ describe('Product management', () => {
         name: 'Mint Soap',
         description: 'Handmade lavender bar',
         price: 9,
+        quantityOnHand: 12,
       })
     })
 

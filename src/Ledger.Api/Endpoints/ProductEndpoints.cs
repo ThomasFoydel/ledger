@@ -20,7 +20,8 @@ public static class ProductEndpoints
                     product.Description,
                     product.Price,
                     product.IsActive,
-                    product.CreatedAtUtc
+                    product.CreatedAtUtc,
+                    product.QuantityOnHand
                 ))
                 .ToListAsync(ct);
 
@@ -41,7 +42,7 @@ public static class ProductEndpoints
 
         app.MapPost("/products", async (CreateProductRequest request, LedgerDbContext db, CancellationToken ct) =>
         {
-            var errors = Validate(request.Name, request.Description, request.Price);
+            var errors = Validate(request.Name, request.Description, request.Price, request.QuantityOnHand);
 
             if (errors.Count > 0) return Results.ValidationProblem(errors);
 
@@ -49,7 +50,8 @@ public static class ProductEndpoints
             {
                 Name = request.Name!.Trim(),
                 Description = NormalizeDescription(request.Description),
-                Price = request.Price
+                Price = request.Price,
+                QuantityOnHand = request.QuantityOnHand
             };
 
             db.Products.Add(product);
@@ -61,7 +63,7 @@ public static class ProductEndpoints
 
         app.MapPut("/products/{id:guid}", async (Guid id, UpdateProductRequest request, LedgerDbContext db, CancellationToken ct) =>
         {
-            var errors = Validate(request.Name, request.Description, request.Price);
+            var errors = Validate(request.Name, request.Description, request.Price, request.QuantityOnHand);
 
             if (errors.Count > 0) return Results.ValidationProblem(errors);
 
@@ -73,6 +75,7 @@ public static class ProductEndpoints
             product.Name = request.Name!.Trim();
             product.Description = NormalizeDescription(request.Description);
             product.Price = request.Price;
+            product.QuantityOnHand = request.QuantityOnHand;
 
             await db.SaveChangesAsync(ct);
 
@@ -97,7 +100,11 @@ public static class ProductEndpoints
         return app;
     }
 
-    private static Dictionary<string, string[]> Validate(string? name, string? description, decimal price)
+    private static Dictionary<string, string[]> Validate(
+        string? name,
+        string? description,
+        decimal price,
+        int quantityOnHand)
     {
         var errors = new Dictionary<string, string[]>();
 
@@ -107,6 +114,8 @@ public static class ProductEndpoints
         if (description?.Length > 2000) errors["description"] = ["Description cannot exceed 2000 characters."];
 
         if (price < 0 || price > 99999999.99m) errors["price"] = ["Price must be between 0 and 99999999.99."];
+
+        if (quantityOnHand < 0) errors["quantityOnHand"] = ["Quantity cannot be negative."];
 
         return errors;
     }
@@ -121,6 +130,7 @@ public static class ProductEndpoints
             product.Description,
             product.Price,
             product.IsActive,
-            product.CreatedAtUtc
+            product.CreatedAtUtc,
+            product.QuantityOnHand
         );
 }
