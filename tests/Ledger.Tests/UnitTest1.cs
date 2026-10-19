@@ -1,16 +1,42 @@
+using Ledger.Api.Data;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Ledger.Tests;
 
-public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public class HealthEndpointTests : IDisposable
 {
     private readonly HttpClient _client;
 
-    public HealthEndpointTests(WebApplicationFactory<Program> factory)
+    private readonly WebApplicationFactory<Program> _factory;
+
+    public HealthEndpointTests()
     {
-        _client = factory.CreateClient();
+        _factory = new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Testing");
+                builder.ConfigureServices(services =>
+                {
+                    services.RemoveAll<DbContextOptions<LedgerDbContext>>();
+                    services.RemoveAll<LedgerDbContext>();
+                    services.AddDbContext<LedgerDbContext>(options =>
+                        options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
+                });
+            });
+
+        _client = _factory.CreateClient();
+    }
+
+    public void Dispose()
+    {
+        _client.Dispose();
+        _factory.Dispose();
     }
 
     [Fact]

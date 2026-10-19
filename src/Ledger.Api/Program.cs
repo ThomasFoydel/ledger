@@ -63,7 +63,7 @@ var provisioningOptions = app.Services
     .GetRequiredService<IOptions<OwnerProvisioningOptions>>()
     .Value;
 
-if (provisioningOptions.Enabled)
+if (provisioningOptions.Enabled && !app.Environment.IsEnvironment("Testing"))
 {
     await using var scope = app.Services.CreateAsyncScope();
 

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 
 using System.Net;
 using System.Net.Http.Json;
@@ -26,6 +27,7 @@ public class ProductEndpointTests : IDisposable
         _factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
+                builder.UseEnvironment("Testing");
                 builder.ConfigureServices(services =>
                 {
                     services.RemoveAll<DbContextOptions<LedgerDbContext>>();
