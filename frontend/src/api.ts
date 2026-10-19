@@ -6,6 +6,7 @@ type CsrfResponse = {
 
 export type User = {
   email: string;
+  isAdmin: boolean;
 };
 
 export type Product = {
@@ -128,8 +129,6 @@ export async function updateProduct(
   id: string,
   product: ProductInput,
 ): Promise<Product> {
-  const requestToken = await getCsrfToken();
-
   const response = await fetch(
     `${API_PREFIX}/products/${encodeURIComponent(id)}`,
     {
@@ -137,7 +136,7 @@ export async function updateProduct(
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-CSRF-TOKEN": requestToken,
+        "X-CSRF-TOKEN": await getCsrfToken(),
       },
       body: JSON.stringify(product),
     },

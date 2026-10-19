@@ -1,11 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import App from './App'
-import * as api from './api'
-import type { Product } from './api'
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import App from "./App";
+import * as api from "./api";
+import type { Product, User } from "./api";
 
-vi.mock('./api', () => ({
+vi.mock("./api", () => ({
   getCurrentUser: vi.fn(),
   getProducts: vi.fn(),
   login: vi.fn(),
@@ -13,239 +12,304 @@ vi.mock('./api', () => ({
   createProduct: vi.fn(),
   updateProduct: vi.fn(),
   deleteProduct: vi.fn(),
-}))
+}));
+
+const adminUser: User = {
+  email: "owner@example.com",
+  isAdmin: true,
+};
+
+const regularUser: User = {
+  email: "customer@example.com",
+  isAdmin: false,
+};
 
 const sampleProduct: Product = {
-  id: 'product-1',
-  name: 'Lavender Soap',
-  description: 'Handmade lavender bar',
+  id: "product-1",
+  name: "Lavender Soap",
+  description: "Handmade lavender bar",
   price: 8.5,
   isActive: true,
-  createdAtUtcs: '2026-01-01T12:00:00Z',
+  createdAtUtcs: "2026-01-01T00:00:00Z",
   quantityOnHand: 12,
-}
+};
 
-async function renderSignedIn(products: Product[] = []) {
-  vi.mocked(api.getCurrentUser).mockResolvedValue({
-    email: 'owner@example.com',
-  })
-  vi.mocked(api.getProducts).mockResolvedValue(products)
-
-  render(<App />)
-
-  expect(
-    await screen.findByText('Signed in as owner@example.com'),
-  ).toBeInTheDocument()
-}
+beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+  vi.resetAllMocks();
+  vi.mocked(api.getCurrentUser).mockResolvedValue(null);
+  vi.mocked(api.getProducts).mockResolvedValue([sampleProduct]);
+  vi.mocked(api.login).mockResolvedValue(undefined);
+  vi.mocked(api.logout).mockResolvedValue(undefined);
+  vi.mocked(api.createProduct).mockResolvedValue(sampleProduct);
+  vi.mocked(api.updateProduct).mockResolvedValue(sampleProduct);
+  vi.mocked(api.deleteProduct).mockResolvedValue(undefined);
+  vi.stubGlobal("confirm", vi.fn(() => true));
+});
 
 afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-})
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
-describe('App authentication', () => {
-  it('shows the login form when signed out', async () => {
-    vi.mocked(api.getCurrentUser).mockResolvedValue(null)
+async function renderSignedIn(user: User = adminUser) {
+  vi.mocked(api.getCurrentUser).mockResolvedValue(user);
 
-    render(<App />)
+  render(<App />);
+
+  expect(await screen.findByText(user.email)).toBeInTheDocument();
+}
+
+async function signInAsAdmin() {
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+
+  fireEvent.change(screen.getByLabelText("Email"), {
+    target: { value: "owner@example.com" },
+  });
+  fireEvent.change(screen.getByLabelText("Password"), {
+    target: { value: "correct-password" },
+  });
+
+  vi.mocked(api.getCurrentUser).mockResolvedValue(adminUser);
+
+  fireEvent.click(
+    screen.getByRole("dialog").querySelector<HTMLButtonElement>('button[type="submit"]')!
+  );
+
+  expect(await screen.findByRole("heading", { name: "Admin panel" }))
+    .toBeInTheDocument();
+}
+
+describe("Storefront", () => {
+  it("shows the public storefront and products when signed out", async () => {
+    render(<App />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Ledger' }),
-    ).toBeInTheDocument()
-    expect(screen.getByLabelText('Email')).toBeInTheDocument()
-    expect(screen.getByLabelText('Password')).toBeInTheDocument()
-  })
+      await screen.findByRole("heading", { name: "Shop all products" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Lavender Soap" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("$8.50")).toBeInTheDocument();
+    expect(screen.getByText("In stock")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Admin panel" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Product name")).not.toBeInTheDocument();
+  });
 
-  it('logs in and displays the authenticated user', async () => {
-    const user = userEvent.setup()
+  it("opens the sign-in dialog only after clicking Sign in", async () => {
+    render(<App />);
 
-    vi.mocked(api.getCurrentUser)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ email: 'owner@example.com' })
-    vi.mocked(api.login).mockResolvedValue(undefined)
-    vi.mocked(api.getProducts).mockResolvedValue([])
+    await screen.findByRole("heading", { name: "Shop all products" });
 
-    render(<App />)
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    await user.type(
-      await screen.findByLabelText('Email'),
-      'owner@example.com',
-    )
-    await user.type(screen.getByLabelText('Password'), 'example-password')
-    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
-    expect(
-      await screen.findByText('Signed in as owner@example.com'),
-    ).toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "Sign in to Ledger" }))
+      .toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+  });
+
+  it("closes the sign-in dialog with the close button", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close sign-in dialog" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("filters products by name and description", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Lavender Soap" });
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search products" }), {
+      target: { value: "lavender" },
+    });
+
+    expect(screen.getByRole("heading", { name: "Lavender Soap" }))
+      .toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search products" }), {
+      target: { value: "mint" },
+    });
+
+    expect(screen.queryByRole("heading", { name: "Lavender Soap" }))
+      .not.toBeInTheDocument();
+    expect(screen.getByText("No matching products")).toBeInTheDocument();
+  });
+
+  it("shows an out-of-stock status when quantity is zero", async () => {
+    vi.mocked(api.getProducts).mockResolvedValue([
+      { ...sampleProduct, quantityOnHand: 0 },
+    ]);
+
+    render(<App />);
+
+    expect(await screen.findByText("Out of stock")).toBeInTheDocument();
+  });
+});
+
+describe("Authentication and role-based access", () => {
+  it("signs in and shows the admin panel for an Owner", async () => {
+    await signInAsAdmin();
+
+    expect(screen.getByText("owner@example.com")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Admin" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Add a product" }))
+      .toBeInTheDocument();
     expect(api.login).toHaveBeenCalledWith(
-      'owner@example.com',
-      'example-password',
-    )
-  })
+      "owner@example.com",
+      "correct-password",
+    );
+  });
 
-  it('displays an error when login fails', async () => {
-    const user = userEvent.setup()
+  it("keeps a regular signed-in user on the storefront without admin controls", async () => {
+    await renderSignedIn(regularUser);
 
-    vi.mocked(api.getCurrentUser).mockResolvedValue(null)
-    vi.mocked(api.login).mockRejectedValue(
-      new Error('Invalid email or password.'),
-    )
+    expect(screen.getByRole("heading", { name: "Shop all products" }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Admin panel" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+  });
 
-    render(<App />)
+  it("shows an error when sign-in fails", async () => {
+    vi.mocked(api.login).mockRejectedValue(new Error("Invalid email or password."));
 
-    await user.type(
-      await screen.findByLabelText('Email'),
-      'owner@example.com',
-    )
-    await user.type(screen.getByLabelText('Password'), 'wrong-password')
-    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Invalid email or password.',
-    )
-  })
-})
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "owner@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "wrong-password" },
+    });
 
-describe('Product management', () => {
-  it('displays products, prices, and inventory quantities', async () => {
-    await renderSignedIn([sampleProduct])
+    fireEvent.click(
+      screen.getByRole("dialog").querySelector<HTMLButtonElement>('button[type="submit"]')!
+    );
 
-    expect(
-      screen.getByRole('heading', { name: 'Lavender Soap' }),
-    ).toBeInTheDocument()
-    expect(screen.getByText('$8.50')).toBeInTheDocument()
-    expect(screen.getByText('Handmade lavender bar')).toBeInTheDocument()
-    expect(screen.getByText('In stock:').parentElement).toHaveTextContent(
-      'In stock: 12',
-    )
-  })
+    expect(await screen.findByRole("alert"))
+      .toHaveTextContent("Invalid email or password.");
+    expect(screen.queryByRole("heading", { name: "Admin panel" }))
+      .not.toBeInTheDocument();
+  });
 
-  it('creates a product and refreshes the list', async () => {
-    const user = userEvent.setup()
+  it("signs out and keeps the storefront visible", async () => {
+    await renderSignedIn(adminUser);
 
-    vi.mocked(api.createProduct).mockResolvedValue(sampleProduct)
-    vi.mocked(api.getProducts)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([sampleProduct])
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
 
-    await renderSignedIn()
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Sign in" }))
+        .toBeInTheDocument();
+    });
 
-    await user.type(screen.getByLabelText('Name'), 'Lavender Soap')
-    await user.type(
-      screen.getByLabelText('Description'),
-      'Handmade lavender bar',
-    )
-    await user.clear(screen.getByLabelText('Price'))
-    await user.type(screen.getByLabelText('Price'), '8.50')
-    await user.click(
-      screen.getByRole('button', { name: 'Create product' }),
-    )
+    expect(screen.getByRole("heading", { name: "Shop all products" }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Admin panel" }))
+      .not.toBeInTheDocument();
+  });
+});
+
+describe("Admin product management", () => {
+  it("creates a product", async () => {
+    await signInAsAdmin();
+
+    fireEvent.change(screen.getByLabelText("Product name"), {
+      target: { value: "Mint Soap" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Fresh mint soap" },
+    });
+    fireEvent.change(screen.getByLabelText("Price (USD)"), {
+      target: { value: "9" },
+    });
+    fireEvent.change(screen.getByLabelText("Quantity on hand"), {
+      target: { value: "20" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Add product" }));
 
     await waitFor(() => {
       expect(api.createProduct).toHaveBeenCalledWith({
-        name: 'Lavender Soap',
-        description: 'Handmade lavender bar',
-        price: 8.5,
-        quantityOnHand: 0,
-      })
-    })
-
-    expect(
-      await screen.findByRole('heading', { name: 'Lavender Soap' }),
-    ).toBeInTheDocument()
-  })
-
-  it('edits a product and saves the updated values', async () => {
-    const user = userEvent.setup()
-
-    vi.mocked(api.updateProduct).mockResolvedValue({
-      ...sampleProduct,
-      name: 'Mint Soap',
-      price: 9,
-    })
-    vi.mocked(api.getProducts)
-      .mockResolvedValueOnce([sampleProduct])
-      .mockResolvedValueOnce([
-        { ...sampleProduct, name: 'Mint Soap', price: 9 },
-      ])
-
-    await renderSignedIn([sampleProduct])
-
-    await user.click(screen.getByRole('button', { name: 'Edit' }))
-    const nameInput = screen.getByLabelText('Name')
-    await user.clear(nameInput)
-    await user.type(nameInput, 'Mint Soap')
-
-    const priceInput = screen.getByLabelText('Price')
-    await user.clear(priceInput)
-    await user.type(priceInput, '9.00')
-
-    await user.click(screen.getByRole('button', { name: 'Save changes' }))
-
-    await waitFor(() => {
-      expect(api.updateProduct).toHaveBeenCalledWith('product-1', {
-        name: 'Mint Soap',
-        description: 'Handmade lavender bar',
+        name: "Mint Soap",
+        description: "Fresh mint soap",
         price: 9,
-        quantityOnHand: 12,
-      })
-    })
+        quantityOnHand: 20,
+      });
+    });
+  });
 
-    expect(
-      await screen.findByRole('heading', { name: 'Mint Soap' }),
-    ).toBeInTheDocument()
-  })
+  it("edits a product", async () => {
+    await signInAsAdmin();
 
-  it('deletes a product after confirmation', async () => {
-    const user = userEvent.setup()
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
 
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    vi.mocked(api.deleteProduct).mockResolvedValue(undefined)
+    expect(screen.getByLabelText("Product name")).toHaveValue("Lavender Soap");
 
-    await renderSignedIn([sampleProduct])
-
-    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    fireEvent.change(screen.getByLabelText("Product name"), {
+      target: { value: "Lavender and Mint Soap" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
-      expect(api.deleteProduct).toHaveBeenCalledWith('product-1')
-    })
+      expect(api.updateProduct).toHaveBeenCalledWith("product-1", {
+        name: "Lavender and Mint Soap",
+        description: "Handmade lavender bar",
+        price: 8.5,
+        quantityOnHand: 12,
+      });
+    });
+  });
 
-    expect(
-      screen.queryByRole('heading', { name: 'Lavender Soap' }),
-    ).not.toBeInTheDocument()
-  })
+  it("deletes a product after confirmation", async () => {
+    await signInAsAdmin();
 
-  it('does not delete a product when confirmation is declined', async () => {
-    const user = userEvent.setup()
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
 
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await waitFor(() => {
+      expect(api.deleteProduct).toHaveBeenCalledWith("product-1");
+    });
+  });
 
-    await renderSignedIn([sampleProduct])
+  it("does not delete a product when confirmation is declined", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => false));
 
-    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await signInAsAdmin();
 
-    expect(api.deleteProduct).not.toHaveBeenCalled()
-    expect(
-      screen.getByRole('heading', { name: 'Lavender Soap' }),
-    ).toBeInTheDocument()
-  })
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
 
-  it('shows an error when product creation fails', async () => {
-    const user = userEvent.setup()
+    expect(api.deleteProduct).not.toHaveBeenCalled();
+  });
 
+  it("shows an error when product creation fails", async () => {
     vi.mocked(api.createProduct).mockRejectedValue(
-      new Error('Could not create product.'),
-    )
+      new Error("Could not create product."),
+    );
 
-    await renderSignedIn()
+    await signInAsAdmin();
 
-    await user.type(screen.getByLabelText('Name'), 'Lavender Soap')
-    await user.click(
-      screen.getByRole('button', { name: 'Create product' }),
-    )
+    fireEvent.change(screen.getByLabelText("Product name"), {
+      target: { value: "Mint Soap" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add product" }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Could not create product.',
-    )
-  })
-})
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts.some((alert) =>
+      alert.textContent?.includes("Could not create product.")
+    )).toBe(true);
+  });
+});
