@@ -9,7 +9,7 @@ namespace Ledger.Tests;
 public class OwnerProvisionerTests
 {
     private const string Email = "owner@example.com";
-    private const string Password = "Test-password-123";
+    private const string Password = "Test-password-123!";
 
     private static ServiceProvider CreateServices()
     {
@@ -70,7 +70,7 @@ public class OwnerProvisionerTests
         var originalUser = await userManager.FindByEmailAsync(Email);
         Assert.NotNull(originalUser);
 
-        await provisioner.ProvisionAsync(Email, "Different-password-456");
+        await provisioner.ProvisionAsync(Email, "Different-password-456!");
 
         var users = await userManager.Users.ToListAsync();
         var user = await userManager.FindByEmailAsync(Email);
@@ -79,7 +79,7 @@ public class OwnerProvisionerTests
         Assert.Equal(originalUser!.Id, user!.Id);
         Assert.True(await userManager.CheckPasswordAsync(user, Password));
         Assert.False(
-            await userManager.CheckPasswordAsync(user, "Different-password-456")
+            await userManager.CheckPasswordAsync(user, "Different-password-456!")
         );
     }
 

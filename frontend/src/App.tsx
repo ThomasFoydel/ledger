@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   createProduct,
   deleteProduct,
@@ -27,6 +28,9 @@ const currency = new Intl.NumberFormat("en-US", {
 });
 
 function App() {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const isAdminRoute = pathname === "/admin";
   const [user, setUser] = useState<User | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
@@ -73,6 +77,17 @@ function App() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    if (pathname !== "/" && pathname !== "/admin") {
+      navigate("/", { replace: true });
+      return;
+    }
+    if (isAdminRoute && !user?.isAdmin) {
+      navigate("/", { replace: true });
+    }
+  }, [loading, pathname, isAdminRoute, user, navigate]);
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -141,10 +156,7 @@ function App() {
     });
     setEditingId(product.id);
     setError("");
-    document.getElementById("admin-panel")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+    navigate("/admin");
   }
 
   async function handleSaveProduct(event: FormEvent<HTMLFormElement>) {
@@ -206,7 +218,7 @@ function App() {
   return (
     <main className="storefront">
       <header className="site-header">
-        <a className="brand" href="#home" aria-label="Ledger home">
+        <a className="brand" href={isAdminRoute ? "/" : "#home"} aria-label="Ledger home">
           <span className="brand-mark" aria-hidden="true">L</span>
           <span>Ledger</span>
         </a>
@@ -215,9 +227,9 @@ function App() {
           {user ? (
             <>
               {user.isAdmin && (
-                <a className="admin-nav-link" href="#admin-panel">
+                <Link className="admin-nav-link" to="/admin">
                   Admin
-                </a>
+                </Link>
               )}
               <span className="account-email">{user.email}</span>
               <button
@@ -244,6 +256,8 @@ function App() {
         </nav>
       </header>
 
+      {!isAdminRoute && (
+        <>
       <section className="store-hero" id="home">
         <div className="hero-content">
           <p className="eyebrow">THE LEDGER SHOP</p>
@@ -378,18 +392,62 @@ function App() {
           </div>
         )}
       </section>
+        </>
+      )}
 
-      {user?.isAdmin && (
+      {user?.isAdmin && isAdminRoute && (
         <section className="admin-section" id="admin-panel">
           <div className="admin-section-heading">
             <div>
               <p className="eyebrow">STORE MANAGEMENT</p>
               <h2>Admin panel</h2>
+              <a href="/">Back to storefront</a>
               <p className="muted">
                 Manage your catalog and inventory.
               </p>
             </div>
             <span className="admin-badge">Owner access</span>
+          </div>
+
+          <div className="admin-card">
+            <h3>Manage products</h3>
+
+            {products.length === 0 ? (
+              <p className="muted">No products yet. Add a product below.</p>
+            ) : (
+              <div className="admin-product-list">
+                {products.map((product) => (
+                  <div className="admin-product-row" key={product.id}>
+                    <div>
+                      <strong>{product.name}</strong>
+                      <p className="muted">
+                        {currency.format(product.price)} ·{" "}
+                        {product.quantityOnHand} in stock
+                      </p>
+                    </div>
+
+                    <div className="product-admin-actions">
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => startEditing(product)}
+                        disabled={submitting}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="text-button text-button-danger"
+                        onClick={() => void handleDeleteProduct(product)}
+                        disabled={submitting}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="admin-card">
@@ -491,13 +549,13 @@ function App() {
         </section>
       )}
 
-      <footer className="site-footer">
-        <a className="brand footer-brand" href="#home">
+      {!isAdminRoute && <footer className="site-footer">
+        <Link className="brand footer-brand" to="/">
           <span className="brand-mark" aria-hidden="true">L</span>
           <span>Ledger</span>
-        </a>
+        </Link>
         <p>Thoughtfully managed. Simply shopped.</p>
-      </footer>
+      </footer>}
 
       {loginOpen && (
         <div

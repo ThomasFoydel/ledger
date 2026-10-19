@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import App from "./App";
 import * as api from "./api";
 import type { Product, User } from "./api";
@@ -13,6 +14,14 @@ vi.mock("./api", () => ({
   updateProduct: vi.fn(),
   deleteProduct: vi.fn(),
 }));
+
+function renderApp(initialEntry = "/") {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <App />
+    </MemoryRouter>,
+  );
+}
 
 const adminUser: User = {
   email: "owner@example.com",
@@ -55,13 +64,13 @@ afterEach(() => {
 async function renderSignedIn(user: User = adminUser) {
   vi.mocked(api.getCurrentUser).mockResolvedValue(user);
 
-  render(<App />);
+  renderApp();
 
   expect(await screen.findByText(user.email)).toBeInTheDocument();
 }
 
 async function signInAsAdmin() {
-  render(<App />);
+  renderApp();
 
   fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
 
@@ -78,13 +87,15 @@ async function signInAsAdmin() {
     screen.getByRole("dialog").querySelector<HTMLButtonElement>('button[type="submit"]')!
   );
 
+  fireEvent.click(await screen.findByRole("link", { name: "Admin" }));
+
   expect(await screen.findByRole("heading", { name: "Admin panel" }))
     .toBeInTheDocument();
 }
 
 describe("Storefront", () => {
   it("shows the public storefront and products when signed out", async () => {
-    render(<App />);
+    renderApp();
 
     expect(
       await screen.findByRole("heading", { name: "Shop all products" }),
@@ -101,7 +112,7 @@ describe("Storefront", () => {
   });
 
   it("opens the sign-in dialog only after clicking Sign in", async () => {
-    render(<App />);
+    renderApp();
 
     await screen.findByRole("heading", { name: "Shop all products" });
 
@@ -116,7 +127,7 @@ describe("Storefront", () => {
   });
 
   it("closes the sign-in dialog with the close button", async () => {
-    render(<App />);
+    renderApp();
 
     fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -127,7 +138,7 @@ describe("Storefront", () => {
   });
 
   it("filters products by name and description", async () => {
-    render(<App />);
+    renderApp();
 
     await screen.findByRole("heading", { name: "Lavender Soap" });
 
@@ -152,7 +163,7 @@ describe("Storefront", () => {
       { ...sampleProduct, quantityOnHand: 0 },
     ]);
 
-    render(<App />);
+    renderApp();
 
     expect(await screen.findByText("Out of stock")).toBeInTheDocument();
   });
@@ -187,7 +198,7 @@ describe("Authentication and role-based access", () => {
   it("shows an error when sign-in fails", async () => {
     vi.mocked(api.login).mockRejectedValue(new Error("Invalid email or password."));
 
-    render(<App />);
+    renderApp();
     fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
 
     fireEvent.change(screen.getByLabelText("Email"), {
