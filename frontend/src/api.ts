@@ -180,3 +180,38 @@ export async function deleteProduct(id: string): Promise<void> {
     throw new Error("Could not delete product.");
   }
 }
+
+
+export type SiteSettings = {
+  pageTitle: string;
+  headerText: string;
+  heroTitle: string;
+  heroDescription: string;
+  footerText: string;
+};
+
+export async function getSiteSettings(): Promise<SiteSettings> {
+  const response = await fetch(`${API_PREFIX}/site-settings`, {
+    credentials: "include",
+  });
+  if (!response.ok) throw new Error("Could not load site settings.");
+  return response.json() as Promise<SiteSettings>;
+}
+
+export async function updateSiteSettings(settings: SiteSettings): Promise<SiteSettings> {
+  const response = await fetch(`${API_PREFIX}/site-settings`, {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-TOKEN": await getCsrfToken(),
+    },
+    body: JSON.stringify(settings),
+  });
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("You are not authorized to edit site settings.");
+  }
+  if (!response.ok) throw new Error("Could not save site settings.");
+  return response.json() as Promise<SiteSettings>;
+}
+

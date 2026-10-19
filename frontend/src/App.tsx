@@ -12,6 +12,9 @@ import {
   type Product,
   type ProductInput,
   type User,
+  getSiteSettings,
+  updateSiteSettings,
+  type SiteSettings,
 } from "./api";
 import "./App.css";
 
@@ -21,6 +24,18 @@ const emptyProduct: ProductInput = {
   price: 0,
   quantityOnHand: 0,
 };
+
+const defaultSiteSettings: SiteSettings = {
+  pageTitle: "Ledger",
+  headerText: "Ledger",
+  heroTitle: "Find something\\nworth keeping.",
+  heroDescription: "Browse our collection and find just what you’re looking for.",
+  footerText: "Thoughtfully managed. Simply shopped.",
+};
+
+
+
+
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -33,6 +48,8 @@ function App() {
   const isAdminRoute = pathname === "/admin";
   const [user, setUser] = useState<User | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(defaultSiteSettings);
+  const [siteSettingsForm, setSiteSettingsForm] = useState<SiteSettings>(defaultSiteSettings);
   const [search, setSearch] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -53,15 +70,22 @@ function App() {
 
     async function initialize() {
       try {
-        const [currentUser, items] = await Promise.all([
+        const [currentUser, items, settings] = await Promise.all([
           getCurrentUser(),
           getProducts(),
+          getSiteSettings(),
         ]);
 
         if (!active) return;
 
         setUser(currentUser);
         setProducts(items);
+        setSiteSettings(settings);
+        setSiteSettingsForm(settings);
+        setSiteSettings(settings);
+        setSiteSettingsForm(settings);
+        setSiteSettings(settings);
+        setSiteSettingsForm(settings);
       } catch {
         if (active) {
           setError("Unable to load the store. Please check that the API is running and try again.");
@@ -77,6 +101,18 @@ function App() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    document.title = siteSettings.pageTitle || "Ledger";
+  }, [siteSettings.pageTitle]);
+
+  useEffect(() => {
+    document.title = siteSettings.pageTitle || "Ledger";
+  }, [siteSettings.pageTitle]);
+
+  useEffect(() => {
+    document.title = siteSettings.pageTitle || "Ledger";
+  }, [siteSettings.pageTitle]);
 
   useEffect(() => {
     if (loading) return;
@@ -159,6 +195,23 @@ function App() {
     navigate("/admin");
   }
 
+  async function handleSaveSiteSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      const saved = await updateSiteSettings(siteSettingsForm);
+      setSiteSettings(saved);
+      setSiteSettingsForm(saved);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save site settings.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+
+
   async function handleSaveProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -218,9 +271,9 @@ function App() {
   return (
     <main className="storefront">
       <header className="site-header">
-        <a className="brand" href={isAdminRoute ? "/" : "#home"} aria-label="Ledger home">
+        <a className="brand" href={isAdminRoute ? "/" : "#home"} aria-label={`${siteSettings.headerText} home`}>
           <span className="brand-mark" aria-hidden="true">L</span>
-          <span>Ledger</span>
+          <span>{siteSettings.headerText}</span>
         </a>
 
         <nav className="header-actions" aria-label="Account">
@@ -260,10 +313,12 @@ function App() {
         <>
       <section className="store-hero" id="home">
         <div className="hero-content">
-          <p className="eyebrow">THE LEDGER SHOP</p>
-          <h1>Find something<br />worth keeping.</h1>
+          <p className="eyebrow">{siteSettings.headerText.toLocaleUpperCase()}</p>
+          <h1>{siteSettings.heroTitle.split("\\n").map((line, index) => (
+            <span key={index}>{index > 0 && <br />}{line}</span>
+          ))}</h1>
           <p className="hero-description">
-            Browse our collection and find just what you’re looking for.
+            {siteSettings.heroDescription}
           </p>
 
           <a className="button button-light" href="#products">
@@ -410,6 +465,129 @@ function App() {
           </div>
 
           <div className="admin-card">
+            <h3>Storefront content</h3>
+            <form className="product-form" onSubmit={handleSaveSiteSettings}>
+              <div className="field">
+                <label htmlFor="site-page-title">Browser page title</label>
+                <input id="site-page-title" required maxLength={200}
+                  value={siteSettingsForm.pageTitle}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, pageTitle: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-header-text">Header / store name</label>
+                <input id="site-header-text" required maxLength={200}
+                  value={siteSettingsForm.headerText}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, headerText: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-hero-title">Main heading (use a new line for a line break)</label>
+                <textarea id="site-hero-title" required maxLength={500} rows={2}
+                  value={siteSettingsForm.heroTitle}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroTitle: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-hero-description">Page description</label>
+                <textarea id="site-hero-description" required maxLength={2000} rows={3}
+                  value={siteSettingsForm.heroDescription}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroDescription: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-footer-text">Footer text</label>
+                <input id="site-footer-text" required maxLength={500}
+                  value={siteSettingsForm.footerText}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, footerText: event.target.value })} />
+              </div>
+              <div className="form-actions">
+                <button type="submit" className="button button-primary" disabled={submitting}>
+                  {submitting ? "Saving…" : "Save storefront content"}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="admin-card">
+            <h3>Storefront content</h3>
+            <form className="product-form" onSubmit={handleSaveSiteSettings}>
+              <div className="field">
+                <label htmlFor="site-page-title">Browser page title</label>
+                <input id="site-page-title" required maxLength={200}
+                  value={siteSettingsForm.pageTitle}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, pageTitle: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-header-text">Header / store name</label>
+                <input id="site-header-text" required maxLength={200}
+                  value={siteSettingsForm.headerText}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, headerText: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-hero-title">Main heading (use a new line for a line break)</label>
+                <textarea id="site-hero-title" required maxLength={500} rows={2}
+                  value={siteSettingsForm.heroTitle}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroTitle: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-hero-description">Page description</label>
+                <textarea id="site-hero-description" required maxLength={2000} rows={3}
+                  value={siteSettingsForm.heroDescription}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroDescription: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-footer-text">Footer text</label>
+                <input id="site-footer-text" required maxLength={500}
+                  value={siteSettingsForm.footerText}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, footerText: event.target.value })} />
+              </div>
+              <div className="form-actions">
+                <button type="submit" className="button button-primary" disabled={submitting}>
+                  {submitting ? "Saving…" : "Save storefront content"}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="admin-card">
+            <h3>Storefront content</h3>
+            <form className="product-form" onSubmit={handleSaveSiteSettings}>
+              <div className="field">
+                <label htmlFor="site-page-title">Browser page title</label>
+                <input id="site-page-title" required maxLength={200}
+                  value={siteSettingsForm.pageTitle}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, pageTitle: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-header-text">Header / store name</label>
+                <input id="site-header-text" required maxLength={200}
+                  value={siteSettingsForm.headerText}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, headerText: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-hero-title">Main heading (use a new line for a line break)</label>
+                <textarea id="site-hero-title" required maxLength={500} rows={2}
+                  value={siteSettingsForm.heroTitle}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroTitle: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-hero-description">Page description</label>
+                <textarea id="site-hero-description" required maxLength={2000} rows={3}
+                  value={siteSettingsForm.heroDescription}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroDescription: event.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="site-footer-text">Footer text</label>
+                <input id="site-footer-text" required maxLength={500}
+                  value={siteSettingsForm.footerText}
+                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, footerText: event.target.value })} />
+              </div>
+              <div className="form-actions">
+                <button type="submit" className="button button-primary" disabled={submitting}>
+                  {submitting ? "Saving…" : "Save storefront content"}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="admin-card">
             <h3>Manage products</h3>
 
             {products.length === 0 ? (
@@ -552,9 +730,9 @@ function App() {
       {!isAdminRoute && <footer className="site-footer">
         <Link className="brand footer-brand" to="/">
           <span className="brand-mark" aria-hidden="true">L</span>
-          <span>Ledger</span>
+          <span>{siteSettings.headerText}</span>
         </Link>
-        <p>Thoughtfully managed. Simply shopped.</p>
+        <p>{siteSettings.footerText}</p>
       </footer>}
 
       {loginOpen && (
