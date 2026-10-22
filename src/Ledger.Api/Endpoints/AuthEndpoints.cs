@@ -54,7 +54,7 @@ public static class AuthEndpoints
             var result = await signInManager.PasswordSignInAsync(
                 user,
                 request.Password,
-                isPersistent: false,
+                isPersistent: true,
                 lockoutOnFailure: true);
 
             if (!result.Succeeded)

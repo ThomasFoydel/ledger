@@ -9,10 +9,25 @@ public class LedgerDbContext(DbContextOptions<LedgerDbContext> options)
     : IdentityDbContext<IdentityUser>(options)
 {
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<SiteSettings> SiteSettings => Set<SiteSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<SiteSettings>(entity =>
+        {
+            entity.HasKey(settings => settings.Id);
+            entity.Property(settings => settings.PageTitle).HasMaxLength(200).IsRequired();
+            entity.Property(settings => settings.HeaderText).HasMaxLength(200).IsRequired();
+            entity.Property(settings => settings.HeroTitle).HasMaxLength(500).IsRequired();
+            entity.Property(settings => settings.HeroDescription).HasMaxLength(2000).IsRequired();
+            entity.Property(settings => settings.FooterText).HasMaxLength(500).IsRequired();
+            entity.Property(settings => settings.LogoUrl).HasMaxLength(500);
+            entity.Property(settings => settings.LogoContentType).HasMaxLength(50);
+            entity.Property(settings => settings.FaviconUrl).HasMaxLength(500);
+            entity.Property(settings => settings.FaviconContentType).HasMaxLength(50);
+        });
 
         modelBuilder.Entity<Product>(entity =>
         {

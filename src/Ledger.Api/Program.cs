@@ -12,6 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<LedgerDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("Ledger")));
+builder.Services.AddSingleton<Ledger.Api.Services.NeonObjectStorage>();
 
 builder.Services
     .AddIdentity<IdentityUser, IdentityRole>()
@@ -22,14 +23,23 @@ builder.Services.AddScoped<OwnerProvisioner>();
 
 builder.Services.ConfigureApplicationCookie(options =>
 {
-    options.Cookie.Name = "__Host-Ledger.Auth";
+    options.Cookie.Name = builder.Environment.IsDevelopment()
+        ? "Ledger.Auth"
+        : "__Host-Ledger.Auth";
     options.Cookie.HttpOnly = true;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
     options.Cookie.SameSite = SameSiteMode.Lax;
     options.Cookie.Path = "/";
     options.LoginPath = "/login";
     options.ExpireTimeSpan = TimeSpan.FromHours(8);
     options.SlidingExpiration = true;
+    options.Events.OnRedirectToLogin = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return Task.CompletedTask;
+    };
 });
 
 builder.Services.AddAuthorizationBuilder()
@@ -82,6 +92,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -95,6 +106,7 @@ app.MapGet("/health", () => Results.Ok(new
 
 app.MapAuthEndpoints();
 app.MapProductEndpoints();
+app.MapSiteSettingsEndpoints();
 
 app.Run();
 
