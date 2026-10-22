@@ -1,0 +1,201 @@
+using Ledger.Api.Data;
+using Ledger.Api.Models;
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.EntityFrameworkCore;
+
+namespace Ledger.Api.Endpoints;
+
+public static class SiteSettingsEndpoints
+{
+    private const long MaxLogoBytes = 2 * 1024 * 1024;
+
+    public static IEndpointRouteBuilder MapSiteSettingsEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/site-settings", async (LedgerDbContext db, CancellationToken ct) =>
+        {
+            var settings = await GetOrCreateAsync(db, ct);
+            return Results.Ok(settings);
+        });
+
+        app.MapPut("/site-settings", async (
+            SiteSettingsRequest request,
+            LedgerDbContext db,
+            CancellationToken ct) =>
+        {
+            var errors = new Dictionary<string, string[]>();
+
+            Validate(request.PageTitle, "pageTitle", 200, errors);
+            Validate(request.HeaderText, "headerText", 200, errors);
+            Validate(request.HeroTitle, "heroTitle", 500, errors);
+            Validate(request.HeroDescription, "heroDescription", 2000, errors);
+            Validate(request.FooterText, "footerText", 500, errors);
+
+            if (errors.Count > 0)
+                return Results.ValidationProblem(errors);
+
+            var settings = await GetOrCreateAsync(db, ct);
+            settings.PageTitle = request.PageTitle!.Trim();
+            settings.HeaderText = request.HeaderText!.Trim();
+            settings.HeroTitle = request.HeroTitle!.Trim();
+            settings.HeroDescription = request.HeroDescription!.Trim();
+            settings.FooterText = request.FooterText!.Trim();
+
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(settings);
+        }).RequireAuthorization("OwnerOnly");
+
+        app.MapPost("/site-settings/logo", async (
+            HttpContext http,
+            IFormFile file,
+            LedgerDbContext db,
+            IWebHostEnvironment environment,
+            IAntiforgery antiforgery,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                await antiforgery.ValidateRequestAsync(http);
+            }
+            catch (AntiforgeryValidationException)
+            {
+                return Results.BadRequest(new { error = "Invalid CSRF token." });
+            }
+
+            if (file.Length is <= 0 or > MaxLogoBytes)
+                return Results.BadRequest(new { error = "Choose an image smaller than 2 MB." });
+
+            var (extension, signatureLength) = file.ContentType.ToLowerInvariant() switch
+            {
+                "image/png" => (".png", 8),
+                "image/jpeg" => (".jpg", 3),
+                "image/webp" => (".webp", 12),
+                _ => (string.Empty, 0)
+            };
+
+            if (extension.Length == 0)
+                return Results.BadRequest(new { error = "Use a PNG, JPEG, or WebP image." });
+
+            var header = new byte[signatureLength];
+            await using (var input = file.OpenReadStream())
+            {
+                var read = await input.ReadAsync(header.AsMemory(0, signatureLength), ct);
+                if (read != signatureLength || !HasValidSignature(extension, header))
+                    return Results.BadRequest(new { error = "The uploaded file is not a valid supported image." });
+            }
+
+            var logoDirectory = Path.Combine(environment.ContentRootPath, "wwwroot", "uploads", "logos");
+            Directory.CreateDirectory(logoDirectory);
+
+            var fileName = $"{Guid.NewGuid():N}{extension}";
+            var fullPath = Path.Combine(logoDirectory, fileName);
+
+            await using (var output = File.Create(fullPath))
+            await using (var input = file.OpenReadStream())
+            {
+                await input.CopyToAsync(output, ct);
+            }
+
+            var settings = await GetOrCreateAsync(db, ct);
+            var previousUrl = settings.LogoUrl;
+            settings.LogoUrl = $"/uploads/logos/{fileName}";
+
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch
+            {
+                File.Delete(fullPath);
+                throw;
+            }
+
+            DeleteManagedLogo(previousUrl, logoDirectory);
+            return Results.Ok(settings);
+        })
+        .RequireAuthorization("OwnerOnly")
+        .DisableAntiforgery();
+
+        app.MapDelete("/site-settings/logo", async (
+            HttpContext http,
+            LedgerDbContext db,
+            IWebHostEnvironment environment,
+            IAntiforgery antiforgery,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                await antiforgery.ValidateRequestAsync(http);
+            }
+            catch (AntiforgeryValidationException)
+            {
+                return Results.BadRequest(new { error = "Invalid CSRF token." });
+            }
+
+            var settings = await GetOrCreateAsync(db, ct);
+            var previousUrl = settings.LogoUrl;
+            settings.LogoUrl = null;
+            await db.SaveChangesAsync(ct);
+
+            var logoDirectory = Path.Combine(environment.ContentRootPath, "wwwroot", "uploads", "logos");
+            DeleteManagedLogo(previousUrl, logoDirectory);
+
+            return Results.Ok(settings);
+        })
+        .RequireAuthorization("OwnerOnly");
+
+        return app;
+    }
+
+    private static bool HasValidSignature(string extension, byte[] header) =>
+        extension switch
+        {
+            ".png" => header.AsSpan().SequenceEqual(new byte[]
+                { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }),
+            ".jpg" => header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF,
+            ".webp" => header[0] == (byte)'R' && header[1] == (byte)'I' &&
+                       header[2] == (byte)'F' && header[3] == (byte)'F' &&
+                       header[8] == (byte)'W' && header[9] == (byte)'E' &&
+                       header[10] == (byte)'B' && header[11] == (byte)'P',
+            _ => false
+        };
+
+    private static void DeleteManagedLogo(string? url, string directory)
+    {
+        if (string.IsNullOrWhiteSpace(url) ||
+            !url.StartsWith("/uploads/logos/", StringComparison.Ordinal))
+            return;
+
+        var fileName = url["/uploads/logos/".Length..];
+        if (fileName != Path.GetFileName(fileName))
+            return;
+
+        var path = Path.Combine(directory, fileName);
+        if (File.Exists(path))
+            File.Delete(path);
+    }
+
+    private static async Task<SiteSettings> GetOrCreateAsync(
+        LedgerDbContext db,
+        CancellationToken ct)
+    {
+        var settings = await db.SiteSettings.FirstOrDefaultAsync(x => x.Id == 1, ct);
+        if (settings is not null) return settings;
+
+        settings = new SiteSettings();
+        db.SiteSettings.Add(settings);
+        await db.SaveChangesAsync(ct);
+        return settings;
+    }
+
+    private static void Validate(
+        string? value,
+        string key,
+        int maxLength,
+        Dictionary<string, string[]> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            errors[key] = ["This field is required."];
+        else if (value.Trim().Length > maxLength)
+            errors[key] = [$"This field cannot exceed {maxLength} characters."];
+    }
+}

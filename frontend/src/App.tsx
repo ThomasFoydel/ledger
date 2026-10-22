@@ -14,6 +14,10 @@ import {
   type User,
   getSiteSettings,
   updateSiteSettings,
+  uploadSiteLogo,
+  deleteSiteLogo,
+  uploadSiteFavicon,
+  deleteSiteFavicon,
   type SiteSettings,
 } from "./api";
 import "./App.css";
@@ -28,9 +32,11 @@ const emptyProduct: ProductInput = {
 const defaultSiteSettings: SiteSettings = {
   pageTitle: "Ledger",
   headerText: "Ledger",
-  heroTitle: "Find something\\nworth keeping.",
+  heroTitle: "Find something\nworth keeping.",
   heroDescription: "Browse our collection and find just what you’re looking for.",
   footerText: "Thoughtfully managed. Simply shopped.",
+  logoUrl: null,
+  faviconUrl: null,
 };
 
 
@@ -42,6 +48,18 @@ const currency = new Intl.NumberFormat("en-US", {
   currency: "USD",
 });
 
+function withImageCacheBust(settings: SiteSettings): SiteSettings {
+  const version = Date.now();
+  const bust = (url: string | null) =>
+    url ? `${url}${url.includes("?") ? "&" : "?"}v=${version}` : null;
+
+  return {
+    ...settings,
+    logoUrl: bust(settings.logoUrl),
+    faviconUrl: bust(settings.faviconUrl),
+  };
+}
+
 function App() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -50,6 +68,10 @@ function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(defaultSiteSettings);
   const [siteSettingsForm, setSiteSettingsForm] = useState<SiteSettings>(defaultSiteSettings);
+  const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null);
+  const [pendingFaviconFile, setPendingFaviconFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [faviconPreviewUrl, setFaviconPreviewUrl] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -59,6 +81,13 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    return () => {
+      if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+      if (faviconPreviewUrl) URL.revokeObjectURL(faviconPreviewUrl);
+    };
+  }, [logoPreviewUrl, faviconPreviewUrl]);
 
   const loadProducts = useCallback(async () => {
     const items = await getProducts();
@@ -82,10 +111,6 @@ function App() {
         setProducts(items);
         setSiteSettings(settings);
         setSiteSettingsForm(settings);
-        setSiteSettings(settings);
-        setSiteSettingsForm(settings);
-        setSiteSettings(settings);
-        setSiteSettingsForm(settings);
       } catch {
         if (active) {
           setError("Unable to load the store. Please check that the API is running and try again.");
@@ -101,14 +126,6 @@ function App() {
       active = false;
     };
   }, []);
-
-  useEffect(() => {
-    document.title = siteSettings.pageTitle || "Ledger";
-  }, [siteSettings.pageTitle]);
-
-  useEffect(() => {
-    document.title = siteSettings.pageTitle || "Ledger";
-  }, [siteSettings.pageTitle]);
 
   useEffect(() => {
     document.title = siteSettings.pageTitle || "Ledger";
@@ -195,22 +212,86 @@ function App() {
     navigate("/admin");
   }
 
-  async function handleSaveSiteSettings(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function handleSelectLogo(file: File | undefined) {
+    if (!file) return;
+    if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+    setPendingLogoFile(file);
+    setLogoPreviewUrl(URL.createObjectURL(file));
+    setError("");
+  }
+
+  async function handleRemoveLogo() {
+    if (!window.confirm("Remove the store logo?")) return;
     setError("");
     setSubmitting(true);
     try {
-      const saved = await updateSiteSettings(siteSettingsForm);
+      const saved = withImageCacheBust(await deleteSiteLogo());
       setSiteSettings(saved);
       setSiteSettingsForm(saved);
+      setPendingLogoFile(null);
+      setLogoPreviewUrl(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save site settings.");
+      setError(err instanceof Error ? err.message : "Unable to remove logo.");
     } finally {
       setSubmitting(false);
     }
   }
 
+  function handleSelectFavicon(file: File | undefined) {
+    if (!file) return;
+    if (faviconPreviewUrl) URL.revokeObjectURL(faviconPreviewUrl);
+    setPendingFaviconFile(file);
+    setFaviconPreviewUrl(URL.createObjectURL(file));
+    setError("");
+  }
 
+  async function handleRemoveFavicon() {
+    if (!window.confirm("Remove the favicon?")) return;
+    setError("");
+    setSubmitting(true);
+    try {
+      const saved = withImageCacheBust(await deleteSiteFavicon());
+      setSiteSettings(saved);
+      setSiteSettingsForm(saved);
+      setPendingFaviconFile(null);
+      setFaviconPreviewUrl(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to remove favicon.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleSaveSiteSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      let saved = withImageCacheBust(await updateSiteSettings(siteSettingsForm));
+      setSiteSettings(saved);
+      setSiteSettingsForm(saved);
+
+      if (pendingLogoFile) {
+        saved = withImageCacheBust(await uploadSiteLogo(pendingLogoFile));
+        setSiteSettings(saved);
+        setSiteSettingsForm(saved);
+        setPendingLogoFile(null);
+        setLogoPreviewUrl(null);
+      }
+
+      if (pendingFaviconFile) {
+        saved = withImageCacheBust(await uploadSiteFavicon(pendingFaviconFile));
+        setSiteSettings(saved);
+        setSiteSettingsForm(saved);
+        setPendingFaviconFile(null);
+        setFaviconPreviewUrl(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save storefront content.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function handleSaveProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -260,6 +341,16 @@ function App() {
     }
   }
 
+  useEffect(() => {
+    let link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    link.href = siteSettings.faviconUrl ?? "/favicon.ico";
+  }, [siteSettings.faviconUrl]);
+
   if (loading) {
     return (
       <main className="app-shell loading-screen">
@@ -272,7 +363,13 @@ function App() {
     <main className="storefront">
       <header className="site-header">
         <a className="brand" href={isAdminRoute ? "/" : "#home"} aria-label={`${siteSettings.headerText} home`}>
-          <span className="brand-mark" aria-hidden="true">L</span>
+          {siteSettings.logoUrl ? (
+            <img className="brand-logo" src={siteSettings.logoUrl} alt="" />
+          ) : (
+            <span className="brand-mark" aria-hidden="true">
+              {siteSettings.pageTitle.trim().charAt(0).toLocaleUpperCase() || "L"}
+            </span>
+          )}
           <span>{siteSettings.headerText}</span>
         </a>
 
@@ -314,7 +411,7 @@ function App() {
       <section className="store-hero" id="home">
         <div className="hero-content">
           <p className="eyebrow">{siteSettings.headerText.toLocaleUpperCase()}</p>
-          <h1>{siteSettings.heroTitle.split("\\n").map((line, index) => (
+          <h1>{siteSettings.heroTitle.split("\n").map((line, index) => (
             <span key={index}>{index > 0 && <br />}{line}</span>
           ))}</h1>
           <p className="hero-description">
@@ -328,7 +425,9 @@ function App() {
         <div className="hero-decoration" aria-hidden="true">
           <div className="hero-circle hero-circle-one" />
           <div className="hero-circle hero-circle-two" />
-          <div className="hero-letter">L</div>
+          <div className="hero-letter">
+            {siteSettings.headerText.trim().charAt(0).toLocaleUpperCase() || "L"}
+          </div>
         </div>
       </section>
 
@@ -497,87 +596,66 @@ function App() {
                   value={siteSettingsForm.footerText}
                   onChange={event => setSiteSettingsForm({ ...siteSettingsForm, footerText: event.target.value })} />
               </div>
-              <div className="form-actions">
-                <button type="submit" className="button button-primary" disabled={submitting}>
-                  {submitting ? "Saving…" : "Save storefront content"}
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <div className="admin-card">
-            <h3>Storefront content</h3>
-            <form className="product-form" onSubmit={handleSaveSiteSettings}>
               <div className="field">
-                <label htmlFor="site-page-title">Browser page title</label>
-                <input id="site-page-title" required maxLength={200}
-                  value={siteSettingsForm.pageTitle}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, pageTitle: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-header-text">Header / store name</label>
-                <input id="site-header-text" required maxLength={200}
-                  value={siteSettingsForm.headerText}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, headerText: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-hero-title">Main heading (use a new line for a line break)</label>
-                <textarea id="site-hero-title" required maxLength={500} rows={2}
-                  value={siteSettingsForm.heroTitle}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroTitle: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-hero-description">Page description</label>
-                <textarea id="site-hero-description" required maxLength={2000} rows={3}
-                  value={siteSettingsForm.heroDescription}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroDescription: event.target.value })} />
+                <label htmlFor="site-favicon">Browser favicon (PNG, JPEG, or WebP; max 2 MB)</label>
+                {(faviconPreviewUrl || siteSettings.faviconUrl) && (
+                  <div className="logo-preview">
+                    <img
+                      className="favicon-preview-image"
+                      src={faviconPreviewUrl ?? siteSettings.faviconUrl ?? ""}
+                      alt={faviconPreviewUrl ? "Selected favicon preview" : "Current favicon"}
+                    />
+                    <button
+                      type="button"
+                      className="text-button text-button-danger"
+                      onClick={() => void handleRemoveFavicon()}
+                      disabled={submitting}
+                    >
+                      Remove favicon
+                    </button>
+                  </div>
+                )}
+                <input
+                  id="site-favicon"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={submitting}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = "";
+                    handleSelectFavicon(file);
+                  }}
+                />
               </div>
               <div className="field">
-                <label htmlFor="site-footer-text">Footer text</label>
-                <input id="site-footer-text" required maxLength={500}
-                  value={siteSettingsForm.footerText}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, footerText: event.target.value })} />
-              </div>
-              <div className="form-actions">
-                <button type="submit" className="button button-primary" disabled={submitting}>
-                  {submitting ? "Saving…" : "Save storefront content"}
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <div className="admin-card">
-            <h3>Storefront content</h3>
-            <form className="product-form" onSubmit={handleSaveSiteSettings}>
-              <div className="field">
-                <label htmlFor="site-page-title">Browser page title</label>
-                <input id="site-page-title" required maxLength={200}
-                  value={siteSettingsForm.pageTitle}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, pageTitle: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-header-text">Header / store name</label>
-                <input id="site-header-text" required maxLength={200}
-                  value={siteSettingsForm.headerText}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, headerText: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-hero-title">Main heading (use a new line for a line break)</label>
-                <textarea id="site-hero-title" required maxLength={500} rows={2}
-                  value={siteSettingsForm.heroTitle}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroTitle: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-hero-description">Page description</label>
-                <textarea id="site-hero-description" required maxLength={2000} rows={3}
-                  value={siteSettingsForm.heroDescription}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroDescription: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-footer-text">Footer text</label>
-                <input id="site-footer-text" required maxLength={500}
-                  value={siteSettingsForm.footerText}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, footerText: event.target.value })} />
+                <label htmlFor="site-logo">Store logo (PNG, JPEG, or WebP; max 2 MB)</label>
+                {(logoPreviewUrl || siteSettings.logoUrl) && (
+                  <div className="logo-preview">
+                    <img
+                      src={logoPreviewUrl ?? siteSettings.logoUrl ?? ""}
+                      alt={logoPreviewUrl ? "Selected store logo preview" : "Current store logo"}
+                    />
+                    <button
+                      type="button"
+                      className="text-button text-button-danger"
+                      onClick={() => void handleRemoveLogo()}
+                      disabled={submitting}
+                    >
+                      Remove logo
+                    </button>
+                  </div>
+                )}
+                <input
+                  id="site-logo"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={submitting}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = "";
+                    handleSelectLogo(file);
+                  }}
+                />
               </div>
               <div className="form-actions">
                 <button type="submit" className="button button-primary" disabled={submitting}>
@@ -729,7 +807,13 @@ function App() {
 
       {!isAdminRoute && <footer className="site-footer">
         <Link className="brand footer-brand" to="/">
-          <span className="brand-mark" aria-hidden="true">L</span>
+          {siteSettings.logoUrl ? (
+            <img className="brand-logo" src={siteSettings.logoUrl} alt="" />
+          ) : (
+            <span className="brand-mark" aria-hidden="true">
+              {siteSettings.pageTitle.trim().charAt(0).toLocaleUpperCase() || "L"}
+            </span>
+          )}
           <span>{siteSettings.headerText}</span>
         </Link>
         <p>{siteSettings.footerText}</p>
