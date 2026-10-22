@@ -2,6 +2,8 @@ import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
+  createCheckoutSession,
+  getCheckoutSession,
   createProduct,
   deleteProduct,
   getCurrentUser,
@@ -68,10 +70,14 @@ function withImageCacheBust(settings: SiteSettings): SiteSettings {
 }
 
 function App() {
-  const { pathname } = useLocation();
+  const { pathname, search: locationSearch } = useLocation();
   const navigate = useNavigate();
   const isAdminRoute = pathname === "/admin";
   const isCartRoute = pathname === "/cart";
+  const isCheckoutSuccessRoute = pathname === "/checkout/success";
+  const isCheckoutCancelRoute = pathname === "/checkout/cancel";
+  const isCheckoutRoute = isCheckoutSuccessRoute || isCheckoutCancelRoute;
+  const checkoutSessionId = new URLSearchParams(locationSearch).get("session_id");
   const isProductRoute =
     pathname.startsWith("/products/") && pathname.split("/").length === 3;
 
@@ -95,7 +101,14 @@ function App() {
       return [];
     }
   });
-  const [detailQuantity, setDetailQuantity] = useState(1);
+  const [detailQuantityState, setDetailQuantityState] = useState({
+    pathname,
+    quantity: 1,
+  });
+  const detailQuantity =
+    detailQuantityState.pathname === pathname ? detailQuantityState.quantity : 1;
+  const setDetailQuantity = (quantity: number) =>
+    setDetailQuantityState({ pathname, quantity });
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(defaultSiteSettings);
   const [siteSettingsForm, setSiteSettingsForm] = useState<SiteSettings>(defaultSiteSettings);
   const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null);
@@ -111,6 +124,19 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [checkoutResult, setCheckoutResult] = useState<{
+    sessionId: string;
+    status?: string;
+    error?: string;
+  } | null>(null);
+  const checkoutStatus =
+    checkoutResult?.sessionId === checkoutSessionId
+      ? checkoutResult.status ?? null
+      : null;
+  const checkoutStatusError =
+    checkoutResult?.sessionId === checkoutSessionId
+      ? checkoutResult.error ?? ""
+      : "";
 
   useEffect(() => {
     return () => {
@@ -124,8 +150,34 @@ function App() {
   }, [cartItems]);
 
   useEffect(() => {
-    setDetailQuantity(1);
-  }, [pathname]);
+    if (!isCheckoutSuccessRoute || !checkoutSessionId) return;
+
+    let active = true;
+
+    void getCheckoutSession(checkoutSessionId)
+      .then((result) => {
+        if (!active) return;
+        setCheckoutResult({
+          sessionId: checkoutSessionId,
+          status: result.status,
+        });
+        if (result.status === "Paid") setCartItems([]);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setCheckoutResult({
+          sessionId: checkoutSessionId,
+          error:
+            err instanceof Error
+              ? err.message
+              : "Could not check payment status.",
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isCheckoutSuccessRoute, checkoutSessionId]);
 
   const loadProducts = useCallback(async () => {
     const items = await getProducts();
@@ -176,6 +228,8 @@ function App() {
       pathname !== "/" &&
       pathname !== "/admin" &&
       pathname !== "/cart" &&
+      pathname !== "/checkout/success" &&
+      pathname !== "/checkout/cancel" &&
       !validProductRoute
     ) {
       navigate("/", { replace: true });
@@ -364,6 +418,23 @@ function App() {
     }
   }
 
+  async function handleCheckout() {
+    setError("");
+    setSubmitting(true);
+    try {
+      const session = await createCheckoutSession(
+        cartProductItems.map(({ product, quantity }) => ({
+          productId: product.id,
+          quantity,
+        })),
+      );
+      window.location.assign(session.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start checkout.");
+      setSubmitting(false);
+    }
+  }
+
   async function handleSaveSiteSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -515,7 +586,65 @@ function App() {
 
       {!isAdminRoute && (
         <>
-      {!isProductRoute && !isCartRoute && (
+      {(isCheckoutSuccessRoute || isCheckoutCancelRoute) && (
+        <section className="cart-section">
+          <div className="cart-heading">
+            <p className="eyebrow">CHECKOUT</p>
+            <h1>{isCheckoutSuccessRoute ? "Order status" : "Checkout cancelled"}</h1>
+          </div>
+
+          {isCheckoutCancelRoute ? (
+            <div className="empty-state">
+              <h2>Your order has not been completed</h2>
+              <p>Your cart is still saved. You can return to it whenever you are ready.</p>
+              <Link className="button button-primary" to="/cart">Return to cart</Link>
+            </div>
+          ) : (
+            <div className="empty-state">
+              {!checkoutSessionId ? (
+                <>
+                  <h2>Unable to verify payment</h2>
+                  <p role="alert" className="error-message">
+                    The checkout session ID is missing.
+                  </p>
+                </>
+              ) : checkoutStatusError ? (
+                <>
+                  <h2>Unable to verify payment</h2>
+                  <p role="alert" className="error-message">{checkoutStatusError}</p>
+                  <p>Please do not submit another payment until you have checked your order status.</p>
+                </>
+              ) : checkoutStatus === "Paid" ? (
+                <>
+                  <h2>Payment confirmed</h2>
+                  <p>Thank you. Your payment has been confirmed and your order is recorded.</p>
+                  <Link className="button button-primary" to="/">Continue shopping</Link>
+                </>
+              ) : checkoutStatus === "PaidInventoryIssue" ? (
+                <>
+                  <h2>Payment received; order needs review</h2>
+                  <p>Your payment was received, but inventory needs manual review. Please contact the store before placing another order.</p>
+                </>
+              ) : checkoutStatus === "Cancelled" ? (
+                <>
+                  <h2>This checkout session expired</h2>
+                  <p>Your cart has been preserved. Start checkout again when you are ready.</p>
+                  <Link className="button button-primary" to="/cart">Return to cart</Link>
+                </>
+              ) : (
+                <>
+                  <h2>{checkoutStatus === "Pending" || checkoutStatus === "CheckoutFailed" ? "Payment not yet confirmed" : "Checking your payment…"}</h2>
+                  <p>Ledger confirms payment through a secure server-side notification. This page alone does not confirm payment.</p>
+                  <button type="button" className="button button-secondary" onClick={() => window.location.reload()}>Check status again</button>
+                  <Link className="continue-shopping-link" to="/">Continue shopping</Link>
+                </>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {!isProductRoute && !isCartRoute && !isCheckoutRoute && (
       <section className="store-hero" id="home">
         <div className="hero-content">
           <p className="eyebrow">{siteSettings.headerText.toLocaleUpperCase()}</p>
@@ -540,7 +669,7 @@ function App() {
       </section>
       )}
 
-      {!isProductRoute && !isCartRoute && (
+      {!isProductRoute && !isCartRoute && !isCheckoutRoute && (
       <section className="catalog-section" id="products">
         <div className="catalog-heading">
           <div>
@@ -832,11 +961,12 @@ function App() {
                 <button
                   type="button"
                   className="button button-primary cart-checkout-button"
-                  disabled
-                  title="Checkout will be available when payment processing is implemented."
+                  disabled={submitting || cartProductItems.length === 0 || cartProductItems.some(({ product, quantity }) => product.price <= 0 || product.quantityOnHand < quantity)}
+                  onClick={() => void handleCheckout()}
                 >
-                  Checkout coming soon
+                  {submitting ? "Redirecting…" : "Secure checkout"}
                 </button>
+                {error && <p className="error-message" role="alert">{error}</p>}
                 <Link className="continue-shopping-link" to="/">
                   Continue shopping
                 </Link>

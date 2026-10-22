@@ -8,6 +8,14 @@ import type { Product, User } from "./api";
 vi.mock("./api", () => ({
   getCurrentUser: vi.fn(),
   getProducts: vi.fn(),
+  getSiteSettings: vi.fn(),
+  updateSiteSettings: vi.fn(),
+  uploadSiteLogo: vi.fn(),
+  deleteSiteLogo: vi.fn(),
+  uploadSiteFavicon: vi.fn(),
+  deleteSiteFavicon: vi.fn(),
+  createCheckoutSession: vi.fn(),
+  getCheckoutSession: vi.fn(),
   login: vi.fn(),
   logout: vi.fn(),
   createProduct: vi.fn(),
@@ -33,6 +41,16 @@ const regularUser: User = {
   isAdmin: false,
 };
 
+const testSiteSettings = {
+  pageTitle: "Ledger",
+  headerText: "Ledger",
+  heroTitle: "Find something\\nworth keeping.",
+  heroDescription: "Browse our collection and find just what you’re looking for.",
+  footerText: "Thoughtfully managed. Simply shopped.",
+  logoUrl: null,
+  faviconUrl: null,
+};
+
 const sampleProduct: Product = {
   id: "product-1",
   name: "Lavender Soap",
@@ -48,6 +66,20 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(api.getCurrentUser).mockResolvedValue(null);
   vi.mocked(api.getProducts).mockResolvedValue([sampleProduct]);
+  vi.mocked(api.getSiteSettings).mockResolvedValue(testSiteSettings);
+  vi.mocked(api.updateSiteSettings).mockResolvedValue(testSiteSettings);
+  vi.mocked(api.uploadSiteLogo).mockResolvedValue(testSiteSettings);
+  vi.mocked(api.deleteSiteLogo).mockResolvedValue(testSiteSettings);
+  vi.mocked(api.uploadSiteFavicon).mockResolvedValue(testSiteSettings);
+  vi.mocked(api.deleteSiteFavicon).mockResolvedValue(testSiteSettings);
+  vi.mocked(api.createCheckoutSession).mockResolvedValue({
+    sessionId: "cs_test_123",
+    url: "https://checkout.stripe.com/c/pay/cs_test_123",
+  });
+  vi.mocked(api.getCheckoutSession).mockResolvedValue({
+    orderId: "order-1",
+    status: "Pending",
+  });
   vi.mocked(api.login).mockResolvedValue(undefined);
   vi.mocked(api.logout).mockResolvedValue(undefined);
   vi.mocked(api.createProduct).mockResolvedValue(sampleProduct);
