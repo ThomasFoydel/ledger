@@ -48,6 +48,13 @@ const currency = new Intl.NumberFormat("en-US", {
   currency: "USD",
 });
 
+type CartItem = {
+  productId: string;
+  quantity: number;
+};
+
+const CART_STORAGE_KEY = "ledger-cart";
+
 function withImageCacheBust(settings: SiteSettings): SiteSettings {
   const version = Date.now();
   const bust = (url: string | null) =>
@@ -64,8 +71,31 @@ function App() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const isAdminRoute = pathname === "/admin";
+  const isCartRoute = pathname === "/cart";
+  const isProductRoute =
+    pathname.startsWith("/products/") && pathname.split("/").length === 3;
+
   const [user, setUser] = useState<User | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(CART_STORAGE_KEY);
+      if (!saved) return [];
+
+      const parsed: unknown = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed.filter(
+        (item): item is CartItem =>
+          typeof item?.productId === "string" &&
+          Number.isInteger(item?.quantity) &&
+          item.quantity > 0,
+      );
+    } catch {
+      return [];
+    }
+  });
+  const [detailQuantity, setDetailQuantity] = useState(1);
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(defaultSiteSettings);
   const [siteSettingsForm, setSiteSettingsForm] = useState<SiteSettings>(defaultSiteSettings);
   const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null);
@@ -88,6 +118,14 @@ function App() {
       if (faviconPreviewUrl) URL.revokeObjectURL(faviconPreviewUrl);
     };
   }, [logoPreviewUrl, faviconPreviewUrl]);
+
+  useEffect(() => {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+  }, [cartItems]);
+
+  useEffect(() => {
+    setDetailQuantity(1);
+  }, [pathname]);
 
   const loadProducts = useCallback(async () => {
     const items = await getProducts();
@@ -133,7 +171,13 @@ function App() {
 
   useEffect(() => {
     if (loading) return;
-    if (pathname !== "/" && pathname !== "/admin") {
+    const validProductRoute = /^\/products\/[^/]+$/.test(pathname);
+    if (
+      pathname !== "/" &&
+      pathname !== "/admin" &&
+      pathname !== "/cart" &&
+      !validProductRoute
+    ) {
       navigate("/", { replace: true });
       return;
     }
@@ -153,6 +197,64 @@ function App() {
         (product.description ?? "").toLocaleLowerCase().includes(query),
     );
   }, [products, search]);
+
+  const selectedProduct = products.find(
+    (product) => pathname === `/products/${encodeURIComponent(product.id)}`,
+  );
+
+  const cartProductItems = cartItems.flatMap((item) => {
+    const product = products.find((candidate) => candidate.id === item.productId);
+    return product ? [{ ...item, product }] : [];
+  });
+
+  const cartItemCount = cartItems.reduce((total, item) => total + item.quantity, 0);
+  const cartSubtotal = cartProductItems.reduce(
+    (total, item) => total + item.product.price * item.quantity,
+    0,
+  );
+
+  function addToCart(product: Product, quantity = 1) {
+    if (!product.isActive || product.quantityOnHand <= 0) {
+      setError("This product is currently unavailable.");
+      return;
+    }
+
+    setCartItems((current) => {
+      const existing = current.find((item) => item.productId === product.id);
+      const nextQuantity = Math.min(
+        product.quantityOnHand,
+        (existing?.quantity ?? 0) + quantity,
+      );
+
+      if (existing) {
+        return current.map((item) =>
+          item.productId === product.id
+            ? { ...item, quantity: nextQuantity }
+            : item,
+        );
+      }
+
+      return [...current, { productId: product.id, quantity: nextQuantity }];
+    });
+    setError("");
+  }
+
+  function updateCartQuantity(product: Product, quantity: number) {
+    if (quantity <= 0) {
+      setCartItems((current) =>
+        current.filter((item) => item.productId !== product.id),
+      );
+      return;
+    }
+
+    setCartItems((current) =>
+      current.map((item) =>
+        item.productId === product.id
+          ? { ...item, quantity: Math.min(quantity, product.quantityOnHand) }
+          : item,
+      ),
+    );
+  }
 
   function resetForm() {
     setForm(emptyProduct);
@@ -374,6 +476,11 @@ function App() {
         </a>
 
         <nav className="header-actions" aria-label="Account">
+          {!isAdminRoute && (
+            <Link className="cart-nav-link" to="/cart">
+              Cart ({cartItemCount})
+            </Link>
+          )}
           {user ? (
             <>
               {user.isAdmin && (
@@ -408,6 +515,7 @@ function App() {
 
       {!isAdminRoute && (
         <>
+      {!isProductRoute && !isCartRoute && (
       <section className="store-hero" id="home">
         <div className="hero-content">
           <p className="eyebrow">{siteSettings.headerText.toLocaleUpperCase()}</p>
@@ -430,7 +538,9 @@ function App() {
           </div>
         </div>
       </section>
+      )}
 
+      {!isProductRoute && !isCartRoute && (
       <section className="catalog-section" id="products">
         <div className="catalog-heading">
           <div>
@@ -484,18 +594,29 @@ function App() {
           <div className="product-grid">
             {filteredProducts.map((product) => (
               <article className="product-card" key={product.id}>
-                <div className="product-art" aria-hidden="true">
+                <Link
+                  className="product-art product-art-link"
+                  to={`/products/${encodeURIComponent(product.id)}`}
+                  aria-label={`View ${product.name}`}
+                >
                   <span className="product-art-letter">
                     {product.name.trim().charAt(0).toLocaleUpperCase()}
                   </span>
                   <span className="product-art-index">
                     {String(products.indexOf(product) + 1).padStart(2, "0")}
                   </span>
-                </div>
+                </Link>
 
                 <div className="product-card-body">
                   <div className="product-card-heading">
-                    <h3>{product.name}</h3>
+                    <h3>
+                      <Link
+                        className="product-title-link"
+                        to={`/products/${encodeURIComponent(product.id)}`}
+                      >
+                        {product.name}
+                      </Link>
+                    </h3>
                     <strong className="product-price">
                       {currency.format(product.price)}
                     </strong>
@@ -546,7 +667,186 @@ function App() {
           </div>
         )}
       </section>
-        </>
+      )}
+
+      {isProductRoute && (
+        <section className="detail-section">
+          {selectedProduct ? (
+            <div className="product-detail">
+              <div className="product-detail-art" aria-hidden="true">
+                <span>{selectedProduct.name.trim().charAt(0).toLocaleUpperCase()}</span>
+              </div>
+
+              <div className="product-detail-content">
+                <Link className="back-link" to="/">
+                  ← Back to all products
+                </Link>
+                <p className="eyebrow">PRODUCT DETAILS</p>
+                <h1>{selectedProduct.name}</h1>
+                <p className="detail-price">
+                  {currency.format(selectedProduct.price)}
+                </p>
+                <p className="detail-description">
+                  {selectedProduct.description || "Discover the details of this item."}
+                </p>
+                <p className={
+                  selectedProduct.quantityOnHand > 0
+                    ? "stock-status"
+                    : "stock-status stock-unavailable"
+                }>
+                  <span className="stock-dot" aria-hidden="true" />
+                  {selectedProduct.quantityOnHand > 0
+                    ? `${selectedProduct.quantityOnHand} available`
+                    : "Out of stock"}
+                </p>
+
+                {selectedProduct.quantityOnHand > 0 && (
+                  <div className="detail-purchase">
+                    <label htmlFor="detail-quantity">Quantity</label>
+                    <input
+                      id="detail-quantity"
+                      type="number"
+                      min={1}
+                      max={selectedProduct.quantityOnHand}
+                      step={1}
+                      value={detailQuantity}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        setDetailQuantity(
+                          Number.isFinite(value)
+                            ? Math.max(
+                                1,
+                                Math.min(
+                                  selectedProduct.quantityOnHand,
+                                  Math.floor(value),
+                                ),
+                              )
+                            : 1,
+                        );
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      onClick={() => addToCart(selectedProduct, detailQuantity)}
+                    >
+                      Add to cart
+                    </button>
+                  </div>
+                )}
+                {error && <p className="error-message" role="alert">{error}</p>}
+                <Link className="continue-shopping-link" to="/cart">
+                  View cart ({cartItemCount})
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <h1>Product not found</h1>
+              <p>This product may have been removed or is no longer available.</p>
+              <Link className="button button-primary" to="/">
+                Browse products
+              </Link>
+            </div>
+          )}
+        </section>
+      )}
+
+      {isCartRoute && (
+        <section className="cart-section">
+          <div className="cart-heading">
+            <p className="eyebrow">YOUR SELECTION</p>
+            <h1>Shopping cart</h1>
+          </div>
+
+          {cartProductItems.length === 0 ? (
+            <div className="empty-state">
+              <span className="empty-icon" aria-hidden="true">◇</span>
+              <h2>Your cart is empty</h2>
+              <p>Find something worth keeping.</p>
+              <Link className="button button-primary" to="/">
+                Browse products
+              </Link>
+            </div>
+          ) : (
+            <div className="cart-layout">
+              <div className="cart-items">
+                {cartProductItems.map(({ product, quantity }) => (
+                  <article className="cart-item" key={product.id}>
+                    <div className="cart-item-art" aria-hidden="true">
+                      {product.name.trim().charAt(0).toLocaleUpperCase()}
+                    </div>
+                    <div className="cart-item-info">
+                      <Link
+                        className="product-title-link"
+                        to={`/products/${encodeURIComponent(product.id)}`}
+                      >
+                        {product.name}
+                      </Link>
+                      <p>{currency.format(product.price)} each</p>
+                      {product.quantityOnHand === 0 && (
+                        <p className="stock-unavailable">Currently out of stock</p>
+                      )}
+                      <button
+                        type="button"
+                        className="text-button text-button-danger"
+                        onClick={() => updateCartQuantity(product, 0)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="cart-item-quantity">
+                      <label htmlFor={`cart-quantity-${product.id}`}>Qty</label>
+                      <input
+                        id={`cart-quantity-${product.id}`}
+                        type="number"
+                        min={1}
+                        max={product.quantityOnHand}
+                        step={1}
+                        value={quantity}
+                        disabled={product.quantityOnHand === 0}
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          if (Number.isInteger(value) && value > 0) {
+                            updateCartQuantity(product, value);
+                          }
+                        }}
+                      />
+                    </div>
+                    <strong className="cart-line-total">
+                      {currency.format(product.price * quantity)}
+                    </strong>
+                  </article>
+                ))}
+              </div>
+
+              <aside className="cart-summary">
+                <h2>Order summary</h2>
+                <div className="cart-summary-row">
+                  <span>Subtotal</span>
+                  <strong>{currency.format(cartSubtotal)}</strong>
+                </div>
+                <p className="muted">
+                  Shipping and taxes are calculated during checkout.
+                </p>
+                <button
+                  type="button"
+                  className="button button-primary cart-checkout-button"
+                  disabled
+                  title="Checkout will be available when payment processing is implemented."
+                >
+                  Checkout coming soon
+                </button>
+                <Link className="continue-shopping-link" to="/">
+                  Continue shopping
+                </Link>
+              </aside>
+            </div>
+          )}
+        </section>
+      )}
+
+      </>
       )}
 
       {user?.isAdmin && isAdminRoute && (
