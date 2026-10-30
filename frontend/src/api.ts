@@ -73,6 +73,45 @@ export async function login(email: string, password: string): Promise<void> {
   }
 }
 
+export async function register(email: string, password: string): Promise<void> {
+  const requestToken = await getCsrfToken();
+
+  const response = await fetch(`${API_PREFIX}/auth/register`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-TOKEN": requestToken,
+    },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (response.status === 409) {
+    throw new Error("An account with this email already exists.");
+  }
+
+  if (response.status === 400 || response.status === 422) {
+    const data = await response.json().catch(() => null) as {
+      error?: string;
+      errors?: Record<string, string[]>;
+    } | null;
+
+    const validationErrors = data?.errors
+      ? Object.values(data.errors).flat()
+      : [];
+
+    throw new Error(
+      data?.error ??
+      validationErrors.join(" ") ??
+      "Registration details are invalid.",
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error("Could not create your account. Please try again.");
+  }
+}
+
 export async function logout(): Promise<void> {
   const requestToken = await getCsrfToken();
 
@@ -353,4 +392,37 @@ export async function getCheckoutSession(
   }
 
   return response.json() as Promise<CheckoutStatus>;
+}
+
+
+export type CustomerOrderItem = {
+  productId: string;
+  productName: string;
+  unitPrice: number;
+  quantity: number;
+};
+
+export type CustomerOrder = {
+  id: string;
+  status: string;
+  currency: string;
+  totalAmount: number;
+  createdAtUtc: string;
+  paidAtUtc: string | null;
+  items: CustomerOrderItem[];
+};
+
+export async function getOrders(): Promise<CustomerOrder[]> {
+  const response = await fetch(`${API_PREFIX}/orders`, {
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    throw new Error("Please sign in to view your orders.");
+  }
+  if (!response.ok) {
+    throw new Error("Could not load your orders.");
+  }
+
+  return response.json() as Promise<CustomerOrder[]>;
 }

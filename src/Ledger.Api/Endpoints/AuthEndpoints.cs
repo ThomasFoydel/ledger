@@ -63,6 +63,69 @@ public static class AuthEndpoints
             return Results.NoContent();
         });
 
+        app.MapPost("/auth/register", async (
+            RegisterRequest request,
+            UserManager<IdentityUser> userManager,
+            SignInManager<IdentityUser> signInManager,
+            IAntiforgery antiforgery,
+            HttpContext context) =>
+        {
+            try
+            {
+                await antiforgery.ValidateRequestAsync(context);
+            }
+            catch (AntiforgeryValidationException)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Invalid antiforgery token."
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Email) ||
+                string.IsNullOrWhiteSpace(request.Password))
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Email and password are required."
+                });
+            }
+
+            var email = request.Email.Trim();
+
+            if (await userManager.FindByEmailAsync(email) is not null)
+            {
+                return Results.Conflict(new
+                {
+                    error = "An account with this email already exists."
+                });
+            }
+
+            var user = new IdentityUser
+            {
+                UserName = email,
+                Email = email
+            };
+
+            var result = await userManager.CreateAsync(user, request.Password);
+
+            if (!result.Succeeded)
+            {
+                var errors = result.Errors
+                    .Select(error => error.Description)
+                    .ToArray();
+
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["registration"] = errors
+                });
+            }
+
+            await signInManager.SignInAsync(user, isPersistent: true);
+
+            return Results.NoContent();
+        });
+
         app.MapPost("/auth/logout", async (
             SignInManager<IdentityUser> signInManager,
             IAntiforgery antiforgery,
@@ -108,4 +171,5 @@ public static class AuthEndpoints
     }
 
     public sealed record LoginRequest(string Email, string Password);
+    public sealed record RegisterRequest(string Email, string Password);
 }
