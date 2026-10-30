@@ -1,4 +1,4 @@
-const API_PREFIX = "/api";
+const API_PREFIX = import.meta.env.VITE_API_BASE_URL || "/api";
 
 type CsrfResponse = {
   requestToken: string;
