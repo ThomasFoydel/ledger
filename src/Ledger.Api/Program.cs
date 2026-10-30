@@ -108,6 +108,7 @@ app.MapAuthEndpoints();
 app.MapProductEndpoints();
 app.MapSiteSettingsEndpoints();
 app.MapCheckoutEndpoints();
+app.MapOrdersEndpoints();
 
 app.Run();
 

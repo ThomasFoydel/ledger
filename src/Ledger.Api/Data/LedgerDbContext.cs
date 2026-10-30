@@ -40,7 +40,14 @@ public class LedgerDbContext(DbContextOptions<LedgerDbContext> options)
             entity.Property(order => order.TotalAmount).HasPrecision(12, 2);
             entity.Property(order => order.StripeCheckoutSessionId).HasMaxLength(255);
             entity.Property(order => order.CustomerEmail).HasMaxLength(320);
+            entity.Property(order => order.UserId).HasMaxLength(450);
             entity.HasIndex(order => order.StripeCheckoutSessionId).IsUnique();
+            entity.HasIndex(order => order.UserId);
+
+            entity.HasOne<IdentityUser>()
+                .WithMany()
+                .HasForeignKey(order => order.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasMany(order => order.Items)
                 .WithOne(item => item.Order)

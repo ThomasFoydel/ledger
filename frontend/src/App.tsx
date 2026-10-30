@@ -8,11 +8,14 @@ import {
   deleteProduct,
   getCurrentUser,
   getProducts,
+  getOrders,
   login,
+  register,
   logout,
   updateProduct,
   type Product,
   type ProductInput,
+  type CustomerOrder,
   type User,
   getSiteSettings,
   updateSiteSettings,
@@ -74,6 +77,7 @@ function App() {
   const navigate = useNavigate();
   const isAdminRoute = pathname === "/admin";
   const isCartRoute = pathname === "/cart";
+  const isOrdersRoute = pathname === "/orders";
   const isCheckoutSuccessRoute = pathname === "/checkout/success";
   const isCheckoutCancelRoute = pathname === "/checkout/cancel";
   const isCheckoutRoute = isCheckoutSuccessRoute || isCheckoutCancelRoute;
@@ -83,6 +87,9 @@ function App() {
 
   const [user, setUser] = useState<User | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<CustomerOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem(CART_STORAGE_KEY);
@@ -117,6 +124,7 @@ function App() {
   const [faviconPreviewUrl, setFaviconPreviewUrl] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [form, setForm] = useState<ProductInput>(emptyProduct);
@@ -152,30 +160,52 @@ function App() {
   useEffect(() => {
     if (!isCheckoutSuccessRoute || !checkoutSessionId) return;
 
-    let active = true;
+    const sessionId = checkoutSessionId;
 
-    void getCheckoutSession(checkoutSessionId)
-      .then((result) => {
+    let active = true;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+    const maxAttempts = 20;
+    const pollIntervalMs = 1500;
+
+    async function checkStatus() {
+      try {
+        const result = await getCheckoutSession(sessionId);
         if (!active) return;
+
         setCheckoutResult({
-          sessionId: checkoutSessionId,
+          sessionId,
           status: result.status,
         });
-        if (result.status === "Paid") setCartItems([]);
-      })
-      .catch((err: unknown) => {
+
+        if (result.status === "Paid") {
+          setCartItems([]);
+        }
+
+        if (result.status === "Pending" && attempts < maxAttempts) {
+          attempts += 1;
+          timeoutId = setTimeout(() => {
+            void checkStatus();
+          }, pollIntervalMs);
+        }
+      } catch (err: unknown) {
         if (!active) return;
+
         setCheckoutResult({
-          sessionId: checkoutSessionId,
+          sessionId,
           error:
             err instanceof Error
               ? err.message
               : "Could not check payment status.",
         });
-      });
+      }
+    }
+
+    void checkStatus();
 
     return () => {
       active = false;
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
     };
   }, [isCheckoutSuccessRoute, checkoutSessionId]);
 
@@ -183,6 +213,26 @@ function App() {
     const items = await getProducts();
     setProducts(items);
   }, []);
+
+  const loadOrders = useCallback(async () => {
+    setOrdersLoading(true);
+    setOrdersError("");
+    try {
+      setOrders(await getOrders());
+    } catch (err) {
+      setOrdersError(
+        err instanceof Error ? err.message : "Unable to load your orders.",
+      );
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!loading && isOrdersRoute && user) {
+      void Promise.resolve().then(() => loadOrders());
+    }
+  }, [loading, isOrdersRoute, user, loadOrders]);
 
   useEffect(() => {
     let active = true;
@@ -228,6 +278,7 @@ function App() {
       pathname !== "/" &&
       pathname !== "/admin" &&
       pathname !== "/cart" &&
+      pathname !== "/orders" &&
       pathname !== "/checkout/success" &&
       pathname !== "/checkout/cancel" &&
       !validProductRoute
@@ -237,8 +288,12 @@ function App() {
     }
     if (isAdminRoute && !user?.isAdmin) {
       navigate("/", { replace: true });
+      return;
     }
-  }, [loading, pathname, isAdminRoute, user, navigate]);
+    if (isOrdersRoute && !user) {
+      navigate("/", { replace: true });
+    }
+  }, [loading, pathname, isAdminRoute, isOrdersRoute, user, navigate]);
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -336,6 +391,37 @@ function App() {
       await loadProducts();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleRegister(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+
+    try {
+      await register(email, password);
+
+      const currentUser = await getCurrentUser();
+
+      if (!currentUser) {
+        throw new Error(
+          "Account created, but your sign-in session could not be verified.",
+        );
+      }
+
+      setUser(currentUser);
+      setPassword("");
+      setLoginOpen(false);
+      setIsRegistering(false);
+
+      await loadProducts();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Unable to create your account.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -554,6 +640,9 @@ function App() {
           )}
           {user ? (
             <>
+              <Link className="orders-nav-link" to="/orders">
+                Orders
+              </Link>
               {user.isAdmin && (
                 <Link className="admin-nav-link" to="/admin">
                   Admin
@@ -644,7 +733,7 @@ function App() {
         </section>
       )}
 
-      {!isProductRoute && !isCartRoute && !isCheckoutRoute && (
+      {!isProductRoute && !isCartRoute && !isCheckoutRoute && !isOrdersRoute && (
       <section className="store-hero" id="home">
         <div className="hero-content">
           <p className="eyebrow">{siteSettings.headerText.toLocaleUpperCase()}</p>
@@ -669,7 +758,7 @@ function App() {
       </section>
       )}
 
-      {!isProductRoute && !isCartRoute && !isCheckoutRoute && (
+      {!isProductRoute && !isCartRoute && !isCheckoutRoute && !isOrdersRoute && (
       <section className="catalog-section" id="products">
         <div className="catalog-heading">
           <div>
@@ -971,6 +1060,89 @@ function App() {
                   Continue shopping
                 </Link>
               </aside>
+            </div>
+          )}
+        </section>
+      )}
+
+      {isOrdersRoute && user && (
+        <section className="cart-section orders-section">
+          <div className="cart-heading">
+            <p className="eyebrow">YOUR ACCOUNT</p>
+            <h1>Your orders</h1>
+            <p className="muted">Review your order history and payment status.</p>
+          </div>
+
+          {ordersLoading ? (
+            <div className="empty-state" role="status">
+              <p>Loading your orders…</p>
+            </div>
+          ) : ordersError ? (
+            <div className="empty-state">
+              <p className="error-message" role="alert">{ordersError}</p>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => void loadOrders()}
+              >
+                Try again
+              </button>
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="empty-state">
+              <span className="empty-icon" aria-hidden="true">◇</span>
+              <h2>No orders yet</h2>
+              <p>Your completed purchases will appear here.</p>
+              <Link className="button button-primary" to="/">
+                Browse products
+              </Link>
+            </div>
+          ) : (
+            <div className="orders-list">
+              {orders.map((order) => (
+                <article className="order-card" key={order.id}>
+                  <div className="order-card-heading">
+                    <div>
+                      <p className="eyebrow">ORDER PLACED</p>
+                      <p>{new Date(order.createdAtUtc).toLocaleString()}</p>
+                    </div>
+                    <div className="order-total">
+                      <span className="muted">Order total</span>
+                      <strong>
+                        {new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: order.currency.toUpperCase(),
+                        }).format(order.totalAmount)}
+                      </strong>
+                    </div>
+                  </div>
+                  <p>
+                    Status: <span className={`order-status order-status-${order.status.toLowerCase()}`}>
+                      {order.status}
+                    </span>
+                  </p>
+                  <ul className="order-items">
+                    {order.items.map((item, index) => (
+                      <li key={`${order.id}-${item.productId}-${index}`}>
+                        <span>
+                          {item.productName} × {item.quantity}
+                        </span>
+                        <strong>
+                          {new Intl.NumberFormat("en-US", {
+                            style: "currency",
+                            currency: order.currency.toUpperCase(),
+                          }).format(item.unitPrice * item.quantity)}
+                        </strong>
+                      </li>
+                    ))}
+                  </ul>
+                  {order.paidAtUtc && (
+                    <p className="muted order-paid-date">
+                      Paid {new Date(order.paidAtUtc).toLocaleString()}
+                    </p>
+                  )}
+                </article>
+              ))}
             </div>
           )}
         </section>
@@ -1282,12 +1454,14 @@ function App() {
               L
             </span>
             <p className="eyebrow">WELCOME BACK</p>
-            <h2 id="login-title">Sign in to Ledger</h2>
+            <h2 id="login-title">{isRegistering ? "Create your account" : "Sign in to Ledger"}</h2>
             <p className="muted">
-              Sign in to access your account.
+              {isRegistering
+                ? "Create an account to place orders and track your purchases."
+                : "Sign in to access your account."}
             </p>
 
-            <form onSubmit={handleLogin}>
+            <form onSubmit={isRegistering ? handleRegister : handleLogin}>
               <div className="field">
                 <label htmlFor="login-email">Email</label>
                 <input
@@ -1306,7 +1480,8 @@ function App() {
                 <input
                   id="login-password"
                   type="password"
-                  autoComplete="current-password"
+                  autoComplete={isRegistering ? "new-password" : "current-password"}
+                  minLength={isRegistering ? 8 : undefined}
                   required
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
@@ -1322,9 +1497,26 @@ function App() {
                 className="button button-primary dialog-submit"
                 disabled={submitting}
               >
-                {submitting ? "Signing in…" : "Sign in"}
+                {submitting
+                  ? (isRegistering ? "Creating account…" : "Signing in…")
+                  : (isRegistering ? "Create account" : "Sign in")}
               </button>
             </form>
+
+            <p className="auth-switch">
+              {isRegistering ? "Already have an account?" : "New to Ledger?"}{" "}
+              <button
+                type="button"
+                className="auth-switch-button"
+                onClick={() => {
+                  setIsRegistering((current) => !current);
+                  setError("");
+                }}
+                disabled={submitting}
+              >
+                {isRegistering ? "Sign in" : "Create an account"}
+              </button>
+            </p>
           </section>
         </div>
       )}

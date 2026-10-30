@@ -1220,3 +1220,152 @@ button:disabled {
     padding: 20px;
   }
 }
+
+.auth-switch {
+  margin: 22px 0 0;
+  color: #656b60;
+  font-size: 14px;
+  text-align: center;
+}
+
+.auth-switch-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #344c37;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.auth-switch-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.orders-nav-link {
+  color: #344c37;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.orders-nav-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.orders-section .cart-heading > .muted {
+  margin-top: 8px;
+}
+
+.orders-list {
+  display: grid;
+  gap: 20px;
+}
+
+.order-card {
+  padding: 24px;
+  border: 1px solid #e5e5dc;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.order-card-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e5e5dc;
+}
+
+.order-card-heading h2 {
+  margin: 4px 0 8px;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.order-card-heading .muted {
+  margin: 0;
+  font-size: 13px;
+}
+
+.order-total {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.order-total > strong {
+  font-size: 18px;
+}
+
+.order-status {
+  display: inline-block;
+  padding: 4px 9px;
+  border-radius: 20px;
+  background: #f0f0eb;
+  color: #4c5148;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.order-status-paid {
+  background: #e7f3e8;
+  color: #245b31;
+}
+
+.order-status-cancelled,
+.order-status-checkoutfailed {
+  background: #f8e9e6;
+  color: #8b3026;
+}
+
+.order-items {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 20px 0 0;
+  list-style: none;
+}
+
+.order-items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: #555b51;
+  font-size: 14px;
+}
+
+.order-items li strong {
+  color: #252a23;
+  white-space: nowrap;
+}
+
+.order-paid-date {
+  margin: 18px 0 0;
+  font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .order-card {
+    padding: 18px;
+  }
+
+  .order-card-heading {
+    flex-direction: column;
+  }
+
+  .order-total {
+    justify-items: start;
+  }
+
+  .order-items li {
+    align-items: flex-start;
+  }
+}

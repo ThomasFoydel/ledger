@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Ledger.Api.Data;
 using Ledger.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,7 @@ public static class CheckoutEndpoints
             LedgerDbContext db,
             IConfiguration configuration,
             IWebHostEnvironment environment,
+            HttpContext context,
             CancellationToken ct) =>
         {
             var secretKey = configuration["Stripe:SecretKey"];
@@ -86,6 +88,9 @@ public static class CheckoutEndpoints
 
             var order = new Order
             {
+                UserId = context.User.Identity?.IsAuthenticated == true
+                    ? context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    : null,
                 Items = orderItems,
                 TotalAmount = orderItems.Sum(item => item.UnitPrice * item.Quantity)
             };
