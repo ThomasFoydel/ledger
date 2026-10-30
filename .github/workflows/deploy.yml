@@ -1,0 +1,35 @@
+name: Migrate and Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  migrate-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install EF Core tools
+        run: dotnet tool install --global dotnet-ef --version 8.*
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Apply database migrations
+        env:
+          ConnectionStrings__Ledger: ${{ secrets.NEON_CONNECTION_STRING }}
+        run: dotnet ef database update --project src/Ledger.Api --startup-project src/Ledger.Api
+
+      - name: Deploy backend to Render
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK_URL"
