@@ -1,4 +1,3 @@
-
 using Ledger.Api.Data;
 using Ledger.Api.Endpoints;
 using Ledger.Api.Services;
@@ -8,6 +7,22 @@ using Microsoft.Extensions.Options;
 using System.Net.Mail;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var frontendBaseUrl = builder.Configuration["Frontend:BaseUrl"];
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        if (!string.IsNullOrWhiteSpace(frontendBaseUrl))
+        {
+            policy.WithOrigins(frontendBaseUrl.TrimEnd('/'))
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
+        }
+    });
+});
 
 builder.Services.AddDbContext<LedgerDbContext>(options =>
     options.UseNpgsql(
@@ -30,9 +45,8 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
         ? CookieSecurePolicy.SameAsRequest
         : CookieSecurePolicy.Always;
-    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SameSite = SameSiteMode.None;
     options.Cookie.Path = "/";
-    options.LoginPath = "/login";
     options.ExpireTimeSpan = TimeSpan.FromHours(8);
     options.SlidingExpiration = true;
     options.Events.OnRedirectToLogin = context =>
@@ -93,6 +107,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
