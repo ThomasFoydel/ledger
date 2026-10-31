@@ -46,6 +46,38 @@ public static class OrdersEndpoints
         .RequireAuthorization()
         .WithName("GetCustomerOrders");
 
+        app.MapGet("/admin/orders", async (
+            LedgerDbContext db,
+            CancellationToken ct) =>
+        {
+            var orders = await db.Orders
+                .AsNoTracking()
+                .OrderByDescending(order => order.CreatedAtUtc)
+                .Select(order => new
+                {
+                    order.Id,
+                    order.CustomerEmail,
+                    order.UserId,
+                    order.Status,
+                    order.Currency,
+                    order.TotalAmount,
+                    order.CreatedAtUtc,
+                    order.PaidAtUtc,
+                    Items = order.Items.Select(item => new
+                    {
+                        item.ProductId,
+                        item.ProductName,
+                        item.UnitPrice,
+                        item.Quantity
+                    }).ToList()
+                })
+                .ToListAsync(ct);
+
+            return Results.Ok(orders);
+        })
+        .RequireAuthorization("OwnerOnly")
+        .WithName("GetAllOrders");
+
         return app;
     }
 }
