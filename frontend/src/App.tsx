@@ -139,6 +139,7 @@ function App() {
   const [error, setError] = useState("");
   const [checkoutResult, setCheckoutResult] = useState<{
     sessionId: string;
+    orderId?: string;
     status?: string;
     error?: string;
   } | null>(null);
@@ -180,6 +181,7 @@ function App() {
 
         setCheckoutResult({
           sessionId,
+          orderId: result.orderId,
           status: result.status,
         });
 
@@ -732,7 +734,20 @@ function App() {
                 <>
                   <h2>Payment confirmed</h2>
                   <p>Thank you. Your payment has been confirmed and your order is recorded.</p>
-                  <Link className="button button-primary" to="/">Continue shopping</Link>
+                  {checkoutResult?.orderId && (
+                    <p>
+                      <strong>Order number:</strong>{" "}
+                      {checkoutResult.orderId}
+                    </p>
+                  )}
+                  <div className="checkout-success-actions">
+                    <Link className="button button-primary" to="/orders">
+                      View my orders
+                    </Link>
+                    <Link className="button button-secondary" to="/">
+                      Continue shopping
+                    </Link>
+                  </div>
                 </>
               ) : checkoutStatus === "PaidInventoryIssue" ? (
                 <>
