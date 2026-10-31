@@ -426,3 +426,24 @@ export async function getOrders(): Promise<CustomerOrder[]> {
 
   return response.json() as Promise<CustomerOrder[]>;
 }
+
+export type AdminOrder = CustomerOrder & {
+  customerEmail: string | null;
+  userId: string | null;
+};
+
+export async function getAdminOrders(): Promise<AdminOrder[]> {
+  const response = await fetch(`${API_PREFIX}/admin/orders`, {
+    credentials: "include",
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("You are not authorized to view all orders.");
+  }
+
+  if (!response.ok) {
+    throw new Error("Could not load all orders.");
+  }
+
+  return response.json() as Promise<AdminOrder[]>;
+}

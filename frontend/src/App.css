@@ -1369,3 +1369,77 @@ button:disabled {
     align-items: flex-start;
   }
 }
+
+/* Admin order management */
+.admin-orders-card {
+  margin-bottom: 1.5rem;
+}
+
+.admin-orders-heading,
+.admin-order-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.admin-orders-heading {
+  margin-bottom: 1rem;
+}
+
+.admin-orders-heading h3 {
+  margin-bottom: 0.25rem;
+}
+
+.admin-orders-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-order {
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.admin-order summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.admin-order-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-order-summary > div:last-child {
+  text-align: right;
+}
+
+.admin-order-status {
+  text-transform: capitalize;
+  font-size: 0.875rem;
+}
+
+.admin-order-details {
+  border-top: 1px solid var(--border-color, #ddd);
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-order-details ul {
+  padding-left: 1.25rem;
+}
+
+@media (max-width: 600px) {
+  .admin-order-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-order-summary > div:last-child {
+    text-align: left;
+  }
+}

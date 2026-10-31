@@ -9,6 +9,7 @@ import {
   getCurrentUser,
   getProducts,
   getOrders,
+  getAdminOrders,
   login,
   register,
   logout,
@@ -16,6 +17,7 @@ import {
   type Product,
   type ProductInput,
   type CustomerOrder,
+  type AdminOrder,
   type User,
   getSiteSettings,
   updateSiteSettings,
@@ -90,6 +92,9 @@ function App() {
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState("");
+  const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
+  const [adminOrdersLoading, setAdminOrdersLoading] = useState(false);
+  const [adminOrdersError, setAdminOrdersError] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem(CART_STORAGE_KEY);
@@ -228,11 +233,31 @@ function App() {
     }
   }, []);
 
+  const loadAdminOrders = useCallback(async () => {
+    setAdminOrdersLoading(true);
+    setAdminOrdersError("");
+    try {
+      setAdminOrders(await getAdminOrders());
+    } catch (err) {
+      setAdminOrdersError(
+        err instanceof Error ? err.message : "Unable to load all orders.",
+      );
+    } finally {
+      setAdminOrdersLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!loading && isOrdersRoute && user) {
       void Promise.resolve().then(() => loadOrders());
     }
   }, [loading, isOrdersRoute, user, loadOrders]);
+
+  useEffect(() => {
+    if (!loading && isAdminRoute && user?.isAdmin) {
+      void Promise.resolve().then(() => loadAdminOrders());
+    }
+  }, [loading, isAdminRoute, user, loadAdminOrders]);
 
   useEffect(() => {
     let active = true;
@@ -1163,6 +1188,88 @@ function App() {
               </p>
             </div>
             <span className="admin-badge">Owner access</span>
+          </div>
+
+          <div className="admin-card admin-orders-card">
+            <div className="admin-orders-heading">
+              <div>
+                <h3>All orders</h3>
+                <p className="muted">
+                  Orders placed by customers across your store.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadAdminOrders()}
+                disabled={adminOrdersLoading}
+              >
+                {adminOrdersLoading ? "Refreshing…" : "Refresh"}
+              </button>
+            </div>
+
+            {adminOrdersLoading ? (
+              <p>Loading orders…</p>
+            ) : adminOrdersError ? (
+              <div>
+                <p className="error-message" role="alert">
+                  {adminOrdersError}
+                </p>
+                <button type="button" onClick={() => void loadAdminOrders()}>
+                  Try again
+                </button>
+              </div>
+            ) : adminOrders.length === 0 ? (
+              <p>No orders have been placed yet.</p>
+            ) : (
+              <>
+                <p className="muted">
+                  {adminOrders.length} {adminOrders.length === 1 ? "order" : "orders"}
+                </p>
+
+                <div className="admin-orders-list">
+                  {adminOrders.map(order => (
+                    <details className="admin-order" key={order.id}>
+                      <summary>
+                        <div className="admin-order-summary">
+                          <div>
+                            <strong>{order.customerEmail || "Customer email unavailable"}</strong>
+                            <span className="muted">
+                              {new Date(order.createdAtUtc).toLocaleString()}
+                            </span>
+                          </div>
+                          <div>
+                            <strong>{currency.format(order.totalAmount)}</strong>
+                            <span className="admin-order-status">{order.status}</span>
+                          </div>
+                        </div>
+                      </summary>
+
+                      <div className="admin-order-details">
+                        <p><strong>Order ID:</strong> {order.id}</p>
+                        <p><strong>Payment status:</strong> {order.status}</p>
+                        {order.paidAtUtc && (
+                          <p>
+                            <strong>Paid:</strong>{" "}
+                            {new Date(order.paidAtUtc).toLocaleString()}
+                          </p>
+                        )}
+
+                        <h4>Items</h4>
+                        <ul>
+                          {order.items.map((item, index) => (
+                            <li key={`${item.productId}-${index}`}>
+                              {item.productName} × {item.quantity}
+                              {" — "}
+                              {currency.format(item.unitPrice * item.quantity)}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="admin-card">
