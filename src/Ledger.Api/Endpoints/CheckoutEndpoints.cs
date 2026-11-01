@@ -225,7 +225,15 @@ public static class CheckoutEndpoints
                 ShippingPostalCode = shippingAddress.PostalCode,
                 ShippingCountry = shippingAddress.Country,
                 ShippingRateIdsJson = JsonSerializer.Serialize(
-                    validatedRates.Select(rate => rate.RateId).ToArray())
+                    validatedRates.Select(rate => rate.RateId).ToArray()),
+                Shipments = validatedRates.Select((rate, index) => new OrderShipment
+                {
+                    ParcelNumber = index + 1,
+                    ShippingRateId = rate.RateId,
+                    Carrier = rate.Provider,
+                    ServiceName = rate.ServiceName,
+                    ShippingAmount = rate.Amount
+                }).ToList()
             };
 
             db.Orders.Add(order);
