@@ -43,6 +43,7 @@ builder.Services.AddDbContext<LedgerDbContext>(options =>
         builder.Configuration.GetConnectionString("Ledger")));
 builder.Services.AddSingleton<Ledger.Api.Services.NeonObjectStorage>();
 builder.Services.AddHttpClient<ShippoShippingService>();
+builder.Services.AddTransient<GmailEmailService>();
 
 builder.Services
     .AddIdentity<IdentityUser, IdentityRole>()

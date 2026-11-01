@@ -11,6 +11,7 @@ import {
   getProducts,
   getOrders,
   getAdminOrders,
+  updateOrderShipmentTracking,
   login,
   register,
   logout,
@@ -19,6 +20,7 @@ import {
   type ProductInput,
   type CustomerOrder,
   type AdminOrder,
+  type OrderShipment,
   type User,
   getSiteSettings,
   updateSiteSettings,
@@ -75,6 +77,149 @@ function withImageCacheBust(settings: SiteSettings): SiteSettings {
     logoUrl: bust(settings.logoUrl),
     faviconUrl: bust(settings.faviconUrl),
   };
+}
+
+
+type AdminShipmentTrackingFormProps = {
+  orderId: string;
+  shipment: OrderShipment;
+  onSaved: () => void | Promise<void>;
+};
+
+function AdminShipmentTrackingForm({
+  orderId,
+  shipment,
+  onSaved,
+}: AdminShipmentTrackingFormProps) {
+  const [trackingNumber, setTrackingNumber] = useState(
+    shipment.trackingNumber ?? "",
+  );
+  const [trackingUrl, setTrackingUrl] = useState(
+    shipment.trackingUrl ?? "",
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setTrackingNumber(shipment.trackingNumber ?? "");
+    setTrackingUrl(shipment.trackingUrl ?? "");
+  }, [shipment.trackingNumber, shipment.trackingUrl]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      await updateOrderShipmentTracking(
+        orderId,
+        shipment.parcelNumber,
+        trackingNumber.trim() || null,
+        trackingUrl.trim() || null,
+      );
+      setMessage("Tracking information saved.");
+      await onSaved();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not save tracking information.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleClear() {
+    setSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      await updateOrderShipmentTracking(
+        orderId,
+        shipment.parcelNumber,
+        null,
+        null,
+      );
+      setTrackingNumber("");
+      setTrackingUrl("");
+      setMessage("Tracking information cleared.");
+      await onSaved();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not clear tracking information.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="shipment-tracking-form" onSubmit={handleSubmit}>
+      <h5>Parcel {shipment.parcelNumber} tracking</h5>
+      {shipment.carrier && (
+        <p className="muted">
+          {shipment.carrier}
+          {shipment.serviceName ? ` · ${shipment.serviceName}` : ""}
+        </p>
+      )}
+
+      <div className="field">
+        <label htmlFor={`tracking-number-${orderId}-${shipment.parcelNumber}`}>
+          Tracking number
+        </label>
+        <input
+          id={`tracking-number-${orderId}-${shipment.parcelNumber}`}
+          value={trackingNumber}
+          onChange={event => setTrackingNumber(event.target.value)}
+          maxLength={100}
+          placeholder="Enter tracking number"
+        />
+      </div>
+
+      <div className="field">
+        <label htmlFor={`tracking-url-${orderId}-${shipment.parcelNumber}`}>
+          Tracking URL (optional)
+        </label>
+        <input
+          id={`tracking-url-${orderId}-${shipment.parcelNumber}`}
+          type="url"
+          value={trackingUrl}
+          onChange={event => setTrackingUrl(event.target.value)}
+          maxLength={500}
+          placeholder="https://..."
+        />
+      </div>
+
+      <div className="shipment-tracking-actions">
+        <button
+          type="submit"
+          className="button button-primary"
+          disabled={saving || !trackingNumber.trim()}
+        >
+          {saving ? "Saving…" : shipment.trackingNumber ? "Update tracking" : "Save tracking"}
+        </button>
+        {shipment.trackingNumber && (
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => void handleClear()}
+            disabled={saving}
+          >
+            Clear tracking
+          </button>
+        )}
+      </div>
+
+      {error && <p className="error-message" role="alert">{error}</p>}
+      {message && <p className="muted" role="status">{message}</p>}
+    </form>
+  );
 }
 
 function App() {
@@ -1414,10 +1559,44 @@ function App() {
                     </div>
                   </div>
                   <p>
-                    Status: <span className={`order-status order-status-${order.status.toLowerCase()}`}>
-                      {order.status}
+                    Status:{" "}
+                    <span className={`order-status order-status-${(order.fulfillmentStatus === "Shipped" ? "shipped" : order.fulfillmentStatus === "PartiallyShipped" ? "partially-shipped" : order.status).toLowerCase()}`}>
+                      {order.fulfillmentStatus === "Shipped"
+                        ? "Shipped"
+                        : order.fulfillmentStatus === "PartiallyShipped"
+                          ? "Partially shipped"
+                          : order.status}
                     </span>
                   </p>
+                  {order.shipments.length > 0 && (
+                    <div className="customer-shipment-list">
+                      {order.shipments.map(shipment => (
+                        <div key={shipment.id} className="customer-shipment">
+                          <strong>Parcel {shipment.parcelNumber}</strong>
+                          <span className="muted">
+                            {shipment.status}
+                            {shipment.carrier ? ` · ${shipment.carrier}` : ""}
+                          </span>
+                          {shipment.trackingNumber && (
+                            <p>
+                              Tracking number:{" "}
+                              {shipment.trackingUrl ? (
+                                <a
+                                  href={shipment.trackingUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {shipment.trackingNumber}
+                                </a>
+                              ) : (
+                                <strong>{shipment.trackingNumber}</strong>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <ul className="order-items">
                     {order.items.map((item, index) => (
                       <li key={`${order.id}-${item.productId}-${index}`}>
@@ -1552,6 +1731,35 @@ function App() {
                           <strong>Shipping cost:</strong>{" "}
                           {currency.format(order.shippingAmount)}
                         </p>
+
+                        <h4>Fulfillment</h4>
+                        <p>
+                          <strong>Fulfillment status:</strong>{" "}
+                          {order.fulfillmentStatus === "PartiallyShipped"
+                            ? "Partially shipped"
+                            : order.fulfillmentStatus}
+                        </p>
+
+                        {(order.shipments.length > 0
+                          ? order.shipments
+                          : [{
+                              id: "",
+                              parcelNumber: 1,
+                              carrier: order.shippingProvider,
+                              serviceName: order.shippingServiceName,
+                              status: "Pending",
+                              trackingNumber: null,
+                              trackingUrl: null,
+                              shippedAtUtc: null,
+                            }]
+                        ).map(shipment => (
+                          <AdminShipmentTrackingForm
+                            key={`${order.id}-parcel-${shipment.parcelNumber}`}
+                            orderId={order.id}
+                            shipment={shipment}
+                            onSaved={() => loadAdminOrders()}
+                          />
+                        ))}
 
                         <h4>Items</h4>
                         <ul>

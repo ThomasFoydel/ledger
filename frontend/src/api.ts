@@ -464,9 +464,22 @@ export type CustomerOrderItem = {
   quantity: number;
 };
 
+export type OrderShipment = {
+  id: string;
+  parcelNumber: number;
+  carrier: string | null;
+  serviceName: string | null;
+  status: string;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+  shippedAtUtc: string | null;
+};
+
 export type CustomerOrder = {
   id: string;
   status: string;
+  fulfillmentStatus: string;
+  shipments: OrderShipment[];
   currency: string;
   subtotalAmount: number;
   shippingAmount: number;
@@ -520,4 +533,44 @@ export async function getAdminOrders(): Promise<AdminOrder[]> {
   }
 
   return response.json() as Promise<AdminOrder[]>;
+}
+
+
+export async function updateOrderShipmentTracking(
+  orderId: string,
+  parcelNumber: number,
+  trackingNumber: string | null,
+  trackingUrl: string | null,
+): Promise<void> {
+  const requestToken = await getCsrfToken();
+
+  const response = await fetch(
+    `${API_PREFIX}/admin/orders/${encodeURIComponent(orderId)}/shipments/${parcelNumber}/tracking`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": requestToken,
+      },
+      body: JSON.stringify({ trackingNumber, trackingUrl }),
+    },
+  );
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null) as
+      | { message?: string; title?: string; errors?: Record<string, string[]> }
+      | null;
+
+    const validationMessage = data?.errors
+      ? Object.values(data.errors).flat().join(" ")
+      : "";
+
+    throw new Error(
+      data?.message ||
+      validationMessage ||
+      data?.title ||
+      "Could not update shipment tracking.",
+    );
+  }
 }
