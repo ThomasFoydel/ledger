@@ -17,6 +17,7 @@ export type Product = {
   isActive: boolean;
   createdAtUtcs: string;
   quantityOnHand: number;
+  hasImage: boolean;
 };
 
 export type ProductInput = {
@@ -25,6 +26,49 @@ export type ProductInput = {
   price: number;
   quantityOnHand: number;
 };
+
+export function getProductImageUrl(id: string, version = 0): string {
+  return `${API_PREFIX}/products/${encodeURIComponent(id)}/image?v=${version}`;
+}
+
+export async function uploadProductImage(
+  id: string,
+  file: File,
+): Promise<void> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(
+    `${API_PREFIX}/products/${encodeURIComponent(id)}/image`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "X-CSRF-TOKEN": await getCsrfToken() },
+      body: formData,
+    },
+  );
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("You are not authorized to upload product images.");
+  }
+
+  if (response.status === 404) {
+    throw new Error("Product not found.");
+  }
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null) as
+      | { error?: string; detail?: string; title?: string }
+      | null;
+
+    throw new Error(
+      data?.error ??
+      data?.detail ??
+      data?.title ??
+      "Could not upload the product image.",
+    );
+  }
+}
 
 async function getCsrfToken(): Promise<string> {
   const response = await fetch(`${API_PREFIX}/auth/csrf`, {
