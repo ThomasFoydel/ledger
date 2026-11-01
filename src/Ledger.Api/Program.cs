@@ -47,9 +47,6 @@ builder.Services.AddTransient<GmailEmailService>();
 builder.Services.AddSingleton<ShipmentNotificationQueue>();
 builder.Services.AddHostedService(
     services => services.GetRequiredService<ShipmentNotificationQueue>());
-builder.Services.AddSingleton<ShipmentNotificationQueue>();
-builder.Services.AddHostedService(
-    services => services.GetRequiredService<ShipmentNotificationQueue>());
 
 builder.Services
     .AddIdentity<IdentityUser, IdentityRole>()
