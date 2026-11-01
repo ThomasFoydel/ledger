@@ -335,6 +335,32 @@ export type CheckoutItem = {
   quantity: number;
 };
 
+export type ShippingDestination = {
+  name: string;
+  street1: string;
+  street2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: "US";
+};
+
+export type ShippingRate = {
+  serviceToken: string;
+  serviceName: string;
+  provider: string;
+  amount: number;
+  currency: string;
+  rateIds: string[];
+  parcelCount: number;
+};
+
+export type ShippingRatesResponse = {
+  totalBars: number;
+  parcelCount: number;
+  rates: ShippingRate[];
+};
+
 export type CheckoutSession = {
   sessionId: string;
   url: string;
@@ -345,14 +371,51 @@ export type CheckoutStatus = {
   status: string;
 };
 
+export async function getShippingRates(
+  items: CheckoutItem[],
+  destination: ShippingDestination,
+): Promise<ShippingRatesResponse> {
+  const response = await fetch(`${API_PREFIX}/shipping/rates`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items, destination }),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      data?.detail ??
+        data?.error ??
+        data?.title ??
+        "Could not retrieve shipping rates. Please try again.",
+    );
+  }
+
+  if (!Array.isArray(data?.rates)) {
+    throw new Error("The shipping service returned an invalid response.");
+  }
+
+  return data as ShippingRatesResponse;
+}
+
 export async function createCheckoutSession(
   items: CheckoutItem[],
+  destination: ShippingDestination,
+  shippingServiceToken: string,
+  shippingRateIds: string[],
 ): Promise<CheckoutSession> {
   const response = await fetch(`${API_PREFIX}/checkout/sessions`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items }),
+    body: JSON.stringify({
+      items,
+      destination,
+      shippingServiceToken,
+      shippingRateIds,
+    }),
   });
 
   const data = await response.json().catch(() => null);
@@ -394,7 +457,6 @@ export async function getCheckoutSession(
   return response.json() as Promise<CheckoutStatus>;
 }
 
-
 export type CustomerOrderItem = {
   productId: string;
   productName: string;
@@ -406,10 +468,27 @@ export type CustomerOrder = {
   id: string;
   status: string;
   currency: string;
+  subtotalAmount: number;
+  shippingAmount: number;
   totalAmount: number;
+  shippingServiceToken: string | null;
+  shippingServiceName: string | null;
+  shippingProvider: string | null;
+  shippingName: string | null;
+  shippingStreet1: string | null;
+  shippingStreet2: string | null;
+  shippingCity: string | null;
+  shippingState: string | null;
+  shippingPostalCode: string | null;
+  shippingCountry: string | null;
   createdAtUtc: string;
   paidAtUtc: string | null;
   items: CustomerOrderItem[];
+};
+
+export type AdminOrder = CustomerOrder & {
+  customerEmail: string | null;
+  userId: string | null;
 };
 
 export async function getOrders(): Promise<CustomerOrder[]> {
@@ -426,11 +505,6 @@ export async function getOrders(): Promise<CustomerOrder[]> {
 
   return response.json() as Promise<CustomerOrder[]>;
 }
-
-export type AdminOrder = CustomerOrder & {
-  customerEmail: string | null;
-  userId: string | null;
-};
 
 export async function getAdminOrders(): Promise<AdminOrder[]> {
   const response = await fetch(`${API_PREFIX}/admin/orders`, {

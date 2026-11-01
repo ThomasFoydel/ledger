@@ -12,6 +12,7 @@ public class LedgerDbContext(DbContextOptions<LedgerDbContext> options)
     public DbSet<SiteSettings> SiteSettings => Set<SiteSettings>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<OrderShipment> OrderShipments => Set<OrderShipment>();
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents => Set<ProcessedStripeEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -36,8 +37,25 @@ public class LedgerDbContext(DbContextOptions<LedgerDbContext> options)
         {
             entity.HasKey(order => order.Id);
             entity.Property(order => order.Status).HasMaxLength(40).IsRequired();
+            entity.Property(order => order.FulfillmentStatus).HasMaxLength(40).IsRequired();
             entity.Property(order => order.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(order => order.SubtotalAmount).HasPrecision(12, 2);
+            entity.Property(order => order.ShippingAmount).HasPrecision(12, 2);
             entity.Property(order => order.TotalAmount).HasPrecision(12, 2);
+
+            entity.Property(order => order.ShippingServiceToken).HasMaxLength(100);
+            entity.Property(order => order.ShippingServiceName).HasMaxLength(100);
+            entity.Property(order => order.ShippingProvider).HasMaxLength(50);
+
+            entity.Property(order => order.ShippingName).HasMaxLength(100);
+            entity.Property(order => order.ShippingStreet1).HasMaxLength(200);
+            entity.Property(order => order.ShippingStreet2).HasMaxLength(200);
+            entity.Property(order => order.ShippingCity).HasMaxLength(100);
+            entity.Property(order => order.ShippingState).HasMaxLength(50);
+            entity.Property(order => order.ShippingPostalCode).HasMaxLength(20);
+            entity.Property(order => order.ShippingCountry).HasMaxLength(2);
+            entity.Property(order => order.ShippingRateIdsJson).HasColumnType("text");
+
             entity.Property(order => order.StripeCheckoutSessionId).HasMaxLength(255);
             entity.Property(order => order.CustomerEmail).HasMaxLength(320);
             entity.Property(order => order.UserId).HasMaxLength(450);
@@ -53,6 +71,11 @@ public class LedgerDbContext(DbContextOptions<LedgerDbContext> options)
                 .WithOne(item => item.Order)
                 .HasForeignKey(item => item.OrderId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(order => order.Shipments)
+                .WithOne(shipment => shipment.Order)
+                .HasForeignKey(shipment => shipment.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<OrderItem>(entity =>
@@ -61,6 +84,20 @@ public class LedgerDbContext(DbContextOptions<LedgerDbContext> options)
             entity.Property(item => item.ProductName).HasMaxLength(200).IsRequired();
             entity.Property(item => item.UnitPrice).HasPrecision(10, 2);
             entity.HasIndex(item => item.OrderId);
+        });
+
+        modelBuilder.Entity<OrderShipment>(entity =>
+        {
+            entity.HasKey(shipment => shipment.Id);
+            entity.Property(shipment => shipment.ShippingRateId).HasMaxLength(100);
+            entity.Property(shipment => shipment.Carrier).HasMaxLength(100);
+            entity.Property(shipment => shipment.ServiceName).HasMaxLength(100);
+            entity.Property(shipment => shipment.ShippingAmount).HasPrecision(12, 2);
+            entity.Property(shipment => shipment.Status).HasMaxLength(40).IsRequired();
+            entity.Property(shipment => shipment.TrackingNumber).HasMaxLength(100);
+            entity.Property(shipment => shipment.TrackingUrl).HasMaxLength(500);
+            entity.HasIndex(shipment => new { shipment.OrderId, shipment.ParcelNumber })
+                .IsUnique();
         });
 
         modelBuilder.Entity<ProcessedStripeEvent>(entity =>

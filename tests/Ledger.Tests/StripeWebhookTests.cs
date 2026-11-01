@@ -46,7 +46,11 @@ public class StripeWebhookTests : IDisposable
                     services.RemoveAll<LedgerDbContext>();
 
                     services.AddDbContext<LedgerDbContext>(options =>
-                        options.UseInMemoryDatabase(_databaseName));
+                        options
+                            .UseInMemoryDatabase(_databaseName)
+                            .ConfigureWarnings(warnings =>
+                                warnings.Ignore(
+                                    Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning)));
                 });
             });
 

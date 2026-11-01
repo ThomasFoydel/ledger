@@ -9,6 +9,9 @@ using System.Net.Mail;
 
 var builder = WebApplication.CreateBuilder(args);
 
+Stripe.StripeConfiguration.ApiKey =
+    builder.Configuration["Stripe:SecretKey"];
+
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders =
@@ -39,6 +42,7 @@ builder.Services.AddDbContext<LedgerDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("Ledger")));
 builder.Services.AddSingleton<Ledger.Api.Services.NeonObjectStorage>();
+builder.Services.AddHttpClient<ShippoShippingService>();
 
 builder.Services
     .AddIdentity<IdentityUser, IdentityRole>()
@@ -143,6 +147,7 @@ app.MapAuthEndpoints();
 app.MapProductEndpoints();
 app.MapSiteSettingsEndpoints();
 app.MapCheckoutEndpoints();
+app.MapShippingEndpoints();
 app.MapOrdersEndpoints();
 
 app.Run();
