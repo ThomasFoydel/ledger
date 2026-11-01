@@ -43,7 +43,7 @@ builder.Services.AddDbContext<LedgerDbContext>(options =>
         builder.Configuration.GetConnectionString("Ledger")));
 builder.Services.AddSingleton<Ledger.Api.Services.NeonObjectStorage>();
 builder.Services.AddHttpClient<ShippoShippingService>();
-builder.Services.AddTransient<GmailEmailService>();
+builder.Services.AddHttpClient<GmailEmailService>();
 builder.Services.AddSingleton<ShipmentNotificationQueue>();
 builder.Services.AddHostedService(
     services => services.GetRequiredService<ShipmentNotificationQueue>());

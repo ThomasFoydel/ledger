@@ -1,10 +1,10 @@
-using System.Net;
-using System.Net.Mail;
-using System.Text.Encodings.Web;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace Ledger.Api.Services;
 
 public sealed class GmailEmailService(
+    HttpClient httpClient,
     IConfiguration configuration,
     ILogger<GmailEmailService> logger)
 {
@@ -16,87 +16,82 @@ public sealed class GmailEmailService(
         string? trackingUrl,
         CancellationToken ct)
     {
-        var host = configuration["Email:SmtpHost"] ?? "smtp.gmail.com";
-        var port = configuration.GetValue<int?>("Email:SmtpPort") ?? 587;
-        var username = configuration["Email:Username"];
-        var password = configuration["Email:Password"];
-        var fromAddress = configuration["Email:FromAddress"];
-        var fromName = configuration["Email:FromName"] ?? "Pax Romana";
+        var url = configuration["Email:AppsScriptUrl"];
+        var secret = configuration["Email:AppsScriptSecret"];
 
-        if (string.IsNullOrWhiteSpace(username) ||
-            string.IsNullOrWhiteSpace(password) ||
-            string.IsNullOrWhiteSpace(fromAddress))
+        if (string.IsNullOrWhiteSpace(url) ||
+            string.IsNullOrWhiteSpace(secret))
         {
-            logger.LogWarning(
-                "Shipment notification was not sent because Gmail SMTP settings are missing.");
+            logger.LogError("Apps Script email settings are missing.");
             return false;
         }
 
-        var safeOrderId = HtmlEncoder.Default.Encode(orderId);
-        var safeTrackingNumber = HtmlEncoder.Default.Encode(trackingNumber);
-        var safeTrackingUrl = string.IsNullOrWhiteSpace(trackingUrl)
-            ? null
-            : HtmlEncoder.Default.Encode(trackingUrl);
-
-        var trackingHtml = safeTrackingUrl is null
-            ? safeTrackingNumber
-            : $"<a href=\"{safeTrackingUrl}\">{safeTrackingNumber}</a>";
-
-        var html = $"""
-            <p>Your Pax Romana order has shipped.</p>
-            <p><strong>Order:</strong> {safeOrderId}</p>
-            <p><strong>Parcel:</strong> {parcelNumber}</p>
-            <p><strong>Tracking number:</strong> {trackingHtml}</p>
-            <p>Thank you for your order!</p>
-            """;
-
-        var text = $"""
-            Your Pax Romana order has shipped.
-
-            Order: {orderId}
-            Parcel: {parcelNumber}
-            Tracking number: {trackingNumber}
-            {(string.IsNullOrWhiteSpace(trackingUrl) ? "" : $"Track your parcel: {trackingUrl}")}
-
-            Thank you for your order!
-            """;
-
         try
         {
-            using var message = new MailMessage
+            using var response = await httpClient.PostAsJsonAsync(
+                url,
+                new
+                {
+                    secret,
+                    recipient,
+                    orderId,
+                    parcelNumber,
+                    trackingNumber,
+                    trackingUrl
+                },
+                ct);
+
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
+
+            if (!response.IsSuccessStatusCode)
             {
-                From = new MailAddress(fromAddress, fromName),
-                Subject = "Your Pax Romana order has shipped",
-                Body = text,
-                IsBodyHtml = false
-            };
+                logger.LogError(
+                    "Apps Script email request failed with HTTP {StatusCode}: {Response}",
+                    (int)response.StatusCode,
+                    responseBody);
 
-            message.To.Add(recipient);
-            message.AlternateViews.Add(
-                AlternateView.CreateAlternateViewFromString(
-                    html,
-                    null,
-                    "text/html"));
+                return false;
+            }
 
-            using var client = new SmtpClient(host, port)
+            using var json = JsonDocument.Parse(responseBody);
+
+            var success = json.RootElement.TryGetProperty(
+                "success",
+                out var successElement) &&
+                successElement.GetBoolean();
+
+            if (!success)
             {
-                Credentials = new NetworkCredential(username, password),
-                EnableSsl = true,
-                DeliveryMethod = SmtpDeliveryMethod.Network
-            };
+                var error = json.RootElement.TryGetProperty(
+                    "error",
+                    out var errorElement)
+                    ? errorElement.GetString()
+                    : "Unknown Apps Script error.";
 
-            await client.SendMailAsync(message, ct);
+                logger.LogError(
+                    "Apps Script could not send shipment notification for order {OrderId}: {Error}",
+                    orderId,
+                    error);
+
+                return false;
+            }
+
+            logger.LogInformation(
+                "Shipment notification accepted by Apps Script for order {OrderId}.",
+                orderId);
+
             return true;
         }
         catch (Exception exception) when (
-            exception is SmtpException or
-            InvalidOperationException or
-            FormatException)
+            exception is HttpRequestException or
+            TaskCanceledException or
+            JsonException)
         {
             logger.LogError(
                 exception,
-                "Unable to send shipment notification for order {OrderId}.",
+                "Apps Script shipment notification request failed for order {OrderId}.",
                 orderId);
+
             return false;
         }
     }
