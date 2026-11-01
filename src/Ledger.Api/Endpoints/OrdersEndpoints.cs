@@ -146,7 +146,7 @@ public static class OrdersEndpoints
                 HttpContext http,
                 IAntiforgery antiforgery,
                 LedgerDbContext db,
-                GmailEmailService emailService,
+                ShipmentNotificationQueue notificationQueue,
                 ILogger<OrdersEndpointsMarker> logger,
                 CancellationToken ct) =>
             {
@@ -270,19 +270,26 @@ public static class OrdersEndpoints
 
                 await db.SaveChangesAsync(ct);
 
-                var notificationSent = false;
+                var notificationQueued = false;
+
                 if (trackingChanged &&
                     trackingNumber is not null &&
                     !string.IsNullOrWhiteSpace(order.CustomerEmail))
                 {
-                    notificationSent =
-                        await emailService.SendShipmentNotificationAsync(
+                    notificationQueued = notificationQueue.TryQueue(
+                        new ShipmentNotification(
                             order.CustomerEmail,
                             order.Id.ToString(),
                             shipment.ParcelNumber,
                             trackingNumber,
-                            shipment.TrackingUrl,
-                            ct);
+                            shipment.TrackingUrl));
+
+                    if (!notificationQueued)
+                    {
+                        logger.LogError(
+                            "Shipment notification queue is full. Notification for order {OrderId} was not queued.",
+                            order.Id);
+                    }
                 }
                 else if (trackingChanged &&
                          trackingNumber is not null)
@@ -306,7 +313,7 @@ public static class OrdersEndpoints
                         shipment.ShippedAtUtc
                     },
                     fulfillmentStatus = order.FulfillmentStatus,
-                    notificationSent
+                    notificationQueued
                 });
             })
             .RequireAuthorization("OwnerOnly")
