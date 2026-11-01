@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   createCheckoutSession,
   getCheckoutSession,
+  getShippingRates,
   createProduct,
   deleteProduct,
   getCurrentUser,
@@ -26,6 +27,8 @@ import {
   uploadSiteFavicon,
   deleteSiteFavicon,
   type SiteSettings,
+  type ShippingDestination,
+  type ShippingRate,
 } from "./api";
 import "./App.css";
 
@@ -113,6 +116,23 @@ function App() {
       return [];
     }
   });
+  const [shippingDestination, setShippingDestination] =
+    useState<ShippingDestination>({
+      name: "",
+      street1: "",
+      street2: "",
+      city: "",
+      state: "",
+      postalCode: "",
+      country: "US",
+    });
+  const [shippingRates, setShippingRates] =
+    useState<ShippingRate[] | null>(null);
+  const [selectedShippingServiceToken, setSelectedShippingServiceToken] =
+    useState("");
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [shippingError, setShippingError] = useState("");
+
   const [detailQuantityState, setDetailQuantityState] = useState({
     pathname,
     quantity: 1,
@@ -161,6 +181,9 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+    setShippingRates(null);
+    setSelectedShippingServiceToken("");
+    setShippingError("");
   }, [cartItems]);
 
   useEffect(() => {
@@ -531,16 +554,61 @@ function App() {
     }
   }
 
+  async function handleGetShippingRates(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setShippingError("");
+    setShippingRates(null);
+    setSelectedShippingServiceToken("");
+    setShippingLoading(true);
+
+    try {
+      const result = await getShippingRates(
+        cartProductItems.map(({ product, quantity }) => ({
+          productId: product.id,
+          quantity,
+        })),
+        shippingDestination,
+      );
+
+      setShippingRates(result.rates);
+      if (result.rates.length === 0) {
+        setShippingError(
+          "No USPS Ground Advantage or Priority Mail rates were found for this address.",
+        );
+      }
+    } catch (err) {
+      setShippingError(
+        err instanceof Error ? err.message : "Unable to retrieve shipping rates.",
+      );
+    } finally {
+      setShippingLoading(false);
+    }
+  }
+
   async function handleCheckout() {
+    const selectedRate = shippingRates?.find(
+      (rate) => rate.serviceToken === selectedShippingServiceToken,
+    );
+
+    if (!selectedRate) {
+      setShippingError("Please retrieve and select a shipping rate first.");
+      return;
+    }
+
     setError("");
     setSubmitting(true);
+
     try {
       const session = await createCheckoutSession(
         cartProductItems.map(({ product, quantity }) => ({
           productId: product.id,
           quantity,
         })),
+        shippingDestination,
+        selectedRate.serviceToken,
+        selectedRate.rateIds,
       );
+
       window.location.assign(session.url);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to start checkout.");
@@ -1079,18 +1147,207 @@ function App() {
               </div>
 
               <aside className="cart-summary">
-                <h2>Order summary</h2>
+                <h2>Shipping address</h2>
+
+                <form className="shipping-form" onSubmit={handleGetShippingRates}>
+                  <div className="field">
+                    <label htmlFor="shipping-name">Full name</label>
+                    <input
+                      id="shipping-name"
+                      autoComplete="name"
+                      required
+                      maxLength={100}
+                      value={shippingDestination.name}
+                      onChange={(event) =>
+                        setShippingDestination((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="shipping-street1">Street address</label>
+                    <input
+                      id="shipping-street1"
+                      autoComplete="address-line1"
+                      required
+                      maxLength={200}
+                      value={shippingDestination.street1}
+                      onChange={(event) =>
+                        setShippingDestination((current) => ({
+                          ...current,
+                          street1: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="shipping-street2">Apartment, suite, etc. (optional)</label>
+                    <input
+                      id="shipping-street2"
+                      autoComplete="address-line2"
+                      maxLength={200}
+                      value={shippingDestination.street2}
+                      onChange={(event) =>
+                        setShippingDestination((current) => ({
+                          ...current,
+                          street2: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="shipping-city">City</label>
+                    <input
+                      id="shipping-city"
+                      autoComplete="address-level2"
+                      required
+                      maxLength={100}
+                      value={shippingDestination.city}
+                      onChange={(event) =>
+                        setShippingDestination((current) => ({
+                          ...current,
+                          city: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="shipping-form-row">
+                    <div className="field">
+                      <label htmlFor="shipping-state">State</label>
+                      <input
+                        id="shipping-state"
+                        autoComplete="address-level1"
+                        required
+                        maxLength={2}
+                        minLength={2}
+                        placeholder="IL"
+                        value={shippingDestination.state}
+                        onChange={(event) =>
+                          setShippingDestination((current) => ({
+                            ...current,
+                            state: event.target.value.toUpperCase(),
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div className="field">
+                      <label htmlFor="shipping-postal-code">ZIP code</label>
+                      <input
+                        id="shipping-postal-code"
+                        autoComplete="postal-code"
+                        required
+                        maxLength={10}
+                        value={shippingDestination.postalCode}
+                        onChange={(event) =>
+                          setShippingDestination((current) => ({
+                            ...current,
+                            postalCode: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <p className="muted">Shipping is currently available within the United States.</p>
+
+                  <button
+                    type="submit"
+                    className="button button-secondary cart-checkout-button"
+                    disabled={
+                      shippingLoading ||
+                      submitting ||
+                      cartProductItems.length === 0 ||
+                      cartProductItems.some(
+                        ({ product, quantity }) =>
+                          product.price <= 0 || product.quantityOnHand < quantity,
+                      )
+                    }
+                  >
+                    {shippingLoading ? "Getting rates…" : "Get shipping rates"}
+                  </button>
+                </form>
+
+                {shippingError && (
+                  <p className="error-message" role="alert">{shippingError}</p>
+                )}
+
+                {shippingRates && shippingRates.length > 0 && (
+                  <div className="shipping-rate-list">
+                    <h3>Choose a shipping method</h3>
+                    {shippingRates.map((rate) => (
+                      <label className="shipping-rate-option" key={rate.serviceToken}>
+                        <input
+                          type="radio"
+                          name="shipping-rate"
+                          value={rate.serviceToken}
+                          checked={selectedShippingServiceToken === rate.serviceToken}
+                          onChange={() =>
+                            setSelectedShippingServiceToken(rate.serviceToken)
+                          }
+                        />
+                        <span>
+                          <strong>{rate.serviceName}</strong>
+                          <small>{rate.provider} · {rate.parcelCount} parcel{rate.parcelCount === 1 ? "" : "s"}</small>
+                        </span>
+                        <strong>{currency.format(rate.amount)}</strong>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                <h2 className="order-summary-heading">Order summary</h2>
                 <div className="cart-summary-row">
                   <span>Subtotal</span>
                   <strong>{currency.format(cartSubtotal)}</strong>
                 </div>
+                <div className="cart-summary-row">
+                  <span>Shipping</span>
+                  <strong>
+                    {shippingRates?.find(
+                      (rate) => rate.serviceToken === selectedShippingServiceToken,
+                    )
+                      ? currency.format(
+                          shippingRates.find(
+                            (rate) => rate.serviceToken === selectedShippingServiceToken,
+                          )!.amount,
+                        )
+                      : "—"}
+                  </strong>
+                </div>
+                <div className="cart-summary-row cart-total-row">
+                  <span>Total</span>
+                  <strong>
+                    {currency.format(
+                      cartSubtotal +
+                        (shippingRates?.find(
+                          (rate) => rate.serviceToken === selectedShippingServiceToken,
+                        )?.amount ?? 0),
+                    )}
+                  </strong>
+                </div>
                 <p className="muted">
-                  Shipping and taxes are calculated during checkout.
+                  Taxes, if applicable, are calculated separately.
                 </p>
+
                 <button
                   type="button"
                   className="button button-primary cart-checkout-button"
-                  disabled={submitting || cartProductItems.length === 0 || cartProductItems.some(({ product, quantity }) => product.price <= 0 || product.quantityOnHand < quantity)}
+                  disabled={
+                    submitting ||
+                    !selectedShippingServiceToken ||
+                    cartProductItems.length === 0 ||
+                    cartProductItems.some(
+                      ({ product, quantity }) =>
+                        product.price <= 0 || product.quantityOnHand < quantity,
+                    )
+                  }
                   onClick={() => void handleCheckout()}
                 >
                   {submitting ? "Redirecting…" : "Secure checkout"}
