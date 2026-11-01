@@ -1526,6 +1526,33 @@ function App() {
                           </p>
                         )}
 
+                        <h4>Ship to</h4>
+                        <div className="admin-order-shipping-address">
+                          <strong>{order.shippingName || "Recipient name unavailable"}</strong>
+                          {order.shippingStreet1 && <p>{order.shippingStreet1}</p>}
+                          {order.shippingStreet2 && <p>{order.shippingStreet2}</p>}
+                          <p>
+                            {[order.shippingCity, order.shippingState, order.shippingPostalCode]
+                              .filter(Boolean)
+                              .join(", ")}
+                          </p>
+                          {order.shippingCountry && <p>{order.shippingCountry}</p>}
+                        </div>
+
+                        <h4>Shipping</h4>
+                        <p>
+                          <strong>Carrier:</strong>{" "}
+                          {order.shippingProvider || "Not specified"}
+                        </p>
+                        <p>
+                          <strong>Service:</strong>{" "}
+                          {order.shippingServiceName || "Not specified"}
+                        </p>
+                        <p>
+                          <strong>Shipping cost:</strong>{" "}
+                          {currency.format(order.shippingAmount)}
+                        </p>
+
                         <h4>Items</h4>
                         <ul>
                           {order.items.map((item, index) => (
