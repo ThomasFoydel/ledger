@@ -350,9 +350,8 @@ describe("Admin product management", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Add product" }));
 
-    const alerts = await screen.findAllByRole("alert");
-    expect(alerts.some((alert) =>
-      alert.textContent?.includes("Could not create product.")
-    )).toBe(true);
+    expect(
+      await screen.findByText("Could not create product.", { selector: '[role="alert"]' })
+    ).toBeInTheDocument();
   });
 });
