@@ -947,6 +947,10 @@ function App() {
                 <>
                   <h2>Payment confirmed</h2>
                   <p>Thank you. Your payment has been confirmed and your order is recorded.</p>
+                  <p>
+                    Keep an eye on your email for your USPS tracking number once your order ships.
+                    If you don't see the email, please check your spam folder.
+                  </p>
                   {checkoutResult?.orderId && (
                     <p>
                       <strong>Order number:</strong>{" "}
@@ -1579,18 +1583,14 @@ function App() {
                           </span>
                           {shipment.trackingNumber && (
                             <p>
-                              Tracking number:{" "}
-                              {shipment.trackingUrl ? (
-                                <a
-                                  href={shipment.trackingUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  {shipment.trackingNumber}
-                                </a>
-                              ) : (
-                                <strong>{shipment.trackingNumber}</strong>
-                              )}
+                              USPS tracking number:{" "}
+                              <a
+                                href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(shipment.trackingNumber)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {shipment.trackingNumber}
+                              </a>
                             </p>
                           )}
                         </div>
