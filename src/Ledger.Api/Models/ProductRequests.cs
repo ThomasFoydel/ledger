@@ -21,5 +21,6 @@ public sealed record ProductResponse(
     decimal Price,
     bool IsActive,
     DateTime CreatedAtUtcs,
-    int QuantityOnHand
+    int QuantityOnHand,
+    bool HasImage
 );

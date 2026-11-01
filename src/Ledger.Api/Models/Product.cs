@@ -12,6 +12,8 @@ public class Product
 
     public int QuantityOnHand { get; set; }
 
+    public string? ImageKey { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;

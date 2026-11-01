@@ -9,6 +9,8 @@ import {
   deleteProduct,
   getCurrentUser,
   getProducts,
+  getProductImageUrl,
+  uploadProductImage,
   getOrders,
   getAdminOrders,
   updateOrderShipmentTracking,
@@ -299,6 +301,11 @@ function App() {
   const [password, setPassword] = useState("");
   const [form, setForm] = useState<ProductInput>(emptyProduct);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [pendingProductImageFile, setPendingProductImageFile] =
+    useState<File | null>(null);
+  const [productImagePreviewUrl, setProductImagePreviewUrl] =
+    useState<string | null>(null);
+  const [productImageVersion, setProductImageVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -321,8 +328,9 @@ function App() {
     return () => {
       if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
       if (faviconPreviewUrl) URL.revokeObjectURL(faviconPreviewUrl);
+      if (productImagePreviewUrl) URL.revokeObjectURL(productImagePreviewUrl);
     };
-  }, [logoPreviewUrl, faviconPreviewUrl]);
+  }, [logoPreviewUrl, faviconPreviewUrl, productImagePreviewUrl]);
 
   useEffect(() => {
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
@@ -506,6 +514,10 @@ function App() {
     (product) => pathname === `/products/${encodeURIComponent(product.id)}`,
   );
 
+  const editingProduct = products.find(
+    (product) => product.id === editingId,
+  );
+
   const cartProductItems = cartItems.flatMap((item) => {
     const product = products.find((candidate) => candidate.id === item.productId);
     return product ? [{ ...item, product }] : [];
@@ -563,6 +575,8 @@ function App() {
   function resetForm() {
     setForm(emptyProduct);
     setEditingId(null);
+    setPendingProductImageFile(null);
+    setProductImagePreviewUrl(null);
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -645,8 +659,34 @@ function App() {
       quantityOnHand: product.quantityOnHand,
     });
     setEditingId(product.id);
+    setPendingProductImageFile(null);
+    setProductImagePreviewUrl(null);
     setError("");
     navigate("/admin");
+  }
+
+  function handleSelectProductImage(file: File | undefined) {
+    if (!file) return;
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+
+    if (!allowedTypes.includes(file.type)) {
+      setPendingProductImageFile(null);
+      setProductImagePreviewUrl(null);
+      setError("Choose a PNG, JPEG, or WebP product image.");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setPendingProductImageFile(null);
+      setProductImagePreviewUrl(null);
+      setError("Product images must be 2 MB or smaller.");
+      return;
+    }
+
+    setPendingProductImageFile(file);
+    setProductImagePreviewUrl(URL.createObjectURL(file));
+    setError("");
   }
 
   function handleSelectLogo(file: File | undefined) {
@@ -804,17 +844,46 @@ function App() {
       quantityOnHand: Number(form.quantityOnHand),
     };
 
+    let productSaved = false;
+
     try {
-      if (editingId) {
-        await updateProduct(editingId, input);
-      } else {
-        await createProduct(input);
+      const savedProduct = editingId
+        ? await updateProduct(editingId, input)
+        : await createProduct(input);
+
+      productSaved = true;
+
+      // Keep the newly created product ID if image upload fails.
+      setEditingId(savedProduct.id);
+
+      if (pendingProductImageFile) {
+        await uploadProductImage(
+          savedProduct.id,
+          pendingProductImageFile,
+        );
+        setProductImageVersion(Date.now());
       }
 
       await loadProducts();
       resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save product.");
+      if (productSaved) {
+        try {
+          await loadProducts();
+        } catch {
+          // Preserve the original save or upload error.
+        }
+
+        setError(
+          err instanceof Error
+            ? `Product details were saved, but the image upload failed: ${err.message}`
+            : "Product details were saved, but the image upload failed.",
+        );
+      } else {
+        setError(
+          err instanceof Error ? err.message : "Unable to save product.",
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -1074,9 +1143,23 @@ function App() {
                   to={`/products/${encodeURIComponent(product.id)}`}
                   aria-label={`View ${product.name}`}
                 >
-                  <span className="product-art-letter">
-                    {product.name.trim().charAt(0).toLocaleUpperCase()}
-                  </span>
+                  {product.hasImage ? (
+                    <img
+                      src={getProductImageUrl(product.id, productImageVersion)}
+                      alt={product.name}
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : (
+                    <span className="product-art-letter">
+                      {product.name.trim().charAt(0).toLocaleUpperCase()}
+                    </span>
+                  )}
                   <span className="product-art-index">
                     {String(products.indexOf(product) + 1).padStart(2, "0")}
                   </span>
@@ -1148,8 +1231,25 @@ function App() {
         <section className="detail-section">
           {selectedProduct ? (
             <div className="product-detail">
-              <div className="product-detail-art" aria-hidden="true">
-                <span>{selectedProduct.name.trim().charAt(0).toLocaleUpperCase()}</span>
+              <div className="product-detail-art">
+                {selectedProduct.hasImage ? (
+                  <img
+                    src={getProductImageUrl(
+                      selectedProduct.id,
+                      productImageVersion,
+                    )}
+                    alt={selectedProduct.name}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
+                  />
+                ) : (
+                  <span aria-hidden="true">
+                    {selectedProduct.name.trim().charAt(0).toLocaleUpperCase()}
+                  </span>
+                )}
               </div>
 
               <div className="product-detail-content">
@@ -1986,6 +2086,46 @@ function App() {
                     }
                   />
                 </div>
+              </div>
+
+              <div className="field">
+                <label htmlFor="product-image">
+                  Product image (PNG, JPEG, or WebP; max 2 MB)
+                </label>
+
+                {(productImagePreviewUrl || editingProduct?.hasImage) && (
+                  <div className="logo-preview">
+                    <img
+                      src={
+                        productImagePreviewUrl ??
+                        getProductImageUrl(
+                          editingProduct!.id,
+                          productImageVersion,
+                        )
+                      }
+                      alt={
+                        productImagePreviewUrl
+                          ? "Selected product image preview"
+                          : "Current product image"
+                      }
+                    />
+                  </div>
+                )}
+
+                <input
+                  id="product-image"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={submitting}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = "";
+                    handleSelectProductImage(file);
+                  }}
+                />
+                <p className="muted">
+                  Selecting a new image replaces the current product image.
+                </p>
               </div>
 
               {error && (

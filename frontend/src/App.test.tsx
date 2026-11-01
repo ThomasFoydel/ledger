@@ -59,6 +59,7 @@ const sampleProduct: Product = {
   isActive: true,
   createdAtUtcs: "2026-01-01T00:00:00Z",
   quantityOnHand: 12,
+  hasImage: false,
 };
 
 beforeEach(() => {
