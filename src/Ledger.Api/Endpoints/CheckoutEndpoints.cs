@@ -280,10 +280,6 @@ public static class CheckoutEndpoints
                     Metadata = new Dictionary<string, string>
                     {
                         ["orderId"] = order.Id.ToString()
-                    },
-                    ShippingAddressCollection = new SessionShippingAddressCollectionOptions
-                    {
-                        AllowedCountries = new List<string> { "US" }
                     }
                 };
 
