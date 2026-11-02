@@ -171,9 +171,14 @@ public static class ProductEndpoints
             product.Price = request.Price;
             product.QuantityOnHand = request.QuantityOnHand;
 
+            db.ProductTags.RemoveRange(product.Tags);
             product.Tags.Clear();
-            foreach (var tag in CreateTags(request.Tags))
-                product.Tags.Add(tag);
+
+            var replacementTags = CreateTags(request.Tags);
+            foreach (var tag in replacementTags)
+                tag.ProductId = product.Id;
+
+            db.ProductTags.AddRange(replacementTags);
 
             await db.SaveChangesAsync(ct);
 
