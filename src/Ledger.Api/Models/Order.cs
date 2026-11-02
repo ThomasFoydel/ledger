@@ -28,6 +28,7 @@ public class Order
     public string? CustomerEmail { get; set; }
     public string? UserId { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public bool IsArchived { get; set; }
     public DateTime? PaidAtUtc { get; set; }
 
     public List<OrderItem> Items { get; set; } = [];

@@ -28,6 +28,28 @@ export type ProductInput = {
   tags: string[];
 };
 
+export type PageResult<T> = {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type AdminProductFilters = {
+  search?: string;
+  visibility?: "active" | "hidden" | "all";
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminOrderFilters = {
+  search?: string;
+  archive?: "active" | "archived" | "all";
+  page?: number;
+  pageSize?: number;
+};
+
 export function getProductImageUrl(id: string, version = 0): string {
   return `${API_PREFIX}/products/${encodeURIComponent(id)}/image?v=${version}`;
 }
@@ -289,6 +311,52 @@ export async function deleteProduct(id: string): Promise<void> {
   if (!response.ok) {
     throw new Error("Could not delete product.");
   }
+}
+
+export async function getAdminProducts(
+  filters: AdminProductFilters = {},
+): Promise<PageResult<Product>> {
+  const params = new URLSearchParams();
+  if (filters.search?.trim()) params.set("search", filters.search.trim());
+  if (filters.visibility) params.set("visibility", filters.visibility);
+  params.set("page", String(filters.page ?? 1));
+  params.set("pageSize", String(filters.pageSize ?? 20));
+
+  const response = await fetch(
+    `${API_PREFIX}/admin/products?${params.toString()}`,
+    { credentials: "include" },
+  );
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("You are not authorized to view products.");
+  }
+  if (!response.ok) throw new Error("Could not load products.");
+
+  return response.json() as Promise<PageResult<Product>>;
+}
+
+export async function setProductVisibility(
+  id: string,
+  isActive: boolean,
+): Promise<void> {
+  const response = await fetch(
+    `${API_PREFIX}/admin/products/${encodeURIComponent(id)}/visibility`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": await getCsrfToken(),
+      },
+      body: JSON.stringify({ isActive }),
+    },
+  );
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("You are not authorized to change product visibility.");
+  }
+  if (response.status === 404) throw new Error("Product not found.");
+  if (!response.ok) throw new Error("Could not update product visibility.");
 }
 
 
@@ -573,6 +641,7 @@ export type CustomerOrder = {
 export type AdminOrder = CustomerOrder & {
   customerEmail: string | null;
   userId: string | null;
+  isArchived: boolean;
 };
 
 export async function getOrders(): Promise<CustomerOrder[]> {
@@ -590,20 +659,50 @@ export async function getOrders(): Promise<CustomerOrder[]> {
   return response.json() as Promise<CustomerOrder[]>;
 }
 
-export async function getAdminOrders(): Promise<AdminOrder[]> {
-  const response = await fetch(`${API_PREFIX}/admin/orders`, {
-    credentials: "include",
-  });
+export async function getAdminOrders(
+  filters: AdminOrderFilters = {},
+): Promise<PageResult<AdminOrder>> {
+  const params = new URLSearchParams();
+  if (filters.search?.trim()) params.set("search", filters.search.trim());
+  if (filters.archive) params.set("archive", filters.archive);
+  params.set("page", String(filters.page ?? 1));
+  params.set("pageSize", String(filters.pageSize ?? 20));
+
+  const response = await fetch(
+    `${API_PREFIX}/admin/orders?${params.toString()}`,
+    { credentials: "include" },
+  );
 
   if (response.status === 401 || response.status === 403) {
     throw new Error("You are not authorized to view all orders.");
   }
+  if (!response.ok) throw new Error("Could not load all orders.");
 
-  if (!response.ok) {
-    throw new Error("Could not load all orders.");
+  return response.json() as Promise<PageResult<AdminOrder>>;
+}
+
+export async function setOrderArchived(
+  orderId: string,
+  isArchived: boolean,
+): Promise<void> {
+  const response = await fetch(
+    `${API_PREFIX}/admin/orders/${encodeURIComponent(orderId)}/archive`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": await getCsrfToken(),
+      },
+      body: JSON.stringify({ isArchived }),
+    },
+  );
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("You are not authorized to archive orders.");
   }
-
-  return response.json() as Promise<AdminOrder[]>;
+  if (response.status === 404) throw new Error("Order not found.");
+  if (!response.ok) throw new Error("Could not update order archive status.");
 }
 
 

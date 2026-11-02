@@ -3,11 +3,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router-dom";
 import App from "./App";
 import * as api from "./api";
-import type { Product, User } from "./api";
+import type { AdminOrder, Product, User } from "./api";
 
 vi.mock("./api", () => ({
   getCurrentUser: vi.fn(),
   getProducts: vi.fn(),
+  getProductTags: vi.fn(),
+  getAdminProducts: vi.fn(),
+  setProductVisibility: vi.fn(),
+  getAdminOrders: vi.fn(),
+  setOrderArchived: vi.fn(),
   getSiteSettings: vi.fn(),
   updateSiteSettings: vi.fn(),
   uploadSiteLogo: vi.fn(),
@@ -66,7 +71,33 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   vi.resetAllMocks();
   vi.mocked(api.getCurrentUser).mockResolvedValue(null);
-  vi.mocked(api.getProducts).mockResolvedValue([sampleProduct]);
+  vi.mocked(api.getProducts).mockImplementation(async (query) => {
+    if (!query?.trim()) return [sampleProduct];
+
+    const normalizedQuery = query.trim().toLowerCase();
+    return [sampleProduct].filter(
+      (product) =>
+        product.name.toLowerCase().includes(normalizedQuery) ||
+        product.description?.toLowerCase().includes(normalizedQuery),
+    );
+  });
+  vi.mocked(api.getProductTags).mockResolvedValue([]);
+  vi.mocked(api.getAdminProducts).mockResolvedValue({
+    items: [sampleProduct],
+    totalCount: 1,
+    page: 1,
+    pageSize: 20,
+    totalPages: 1,
+  });
+  vi.mocked(api.setProductVisibility).mockResolvedValue(undefined);
+  vi.mocked(api.getAdminOrders).mockResolvedValue({
+    items: [],
+    totalCount: 0,
+    page: 1,
+    pageSize: 20,
+    totalPages: 0,
+  });
+  vi.mocked(api.setOrderArchived).mockResolvedValue(undefined);
   vi.mocked(api.getSiteSettings).mockResolvedValue(testSiteSettings);
   vi.mocked(api.updateSiteSettings).mockResolvedValue(testSiteSettings);
   vi.mocked(api.uploadSiteLogo).mockResolvedValue(testSiteSettings);
@@ -122,7 +153,7 @@ async function signInAsAdmin() {
 
   fireEvent.click(await screen.findByRole("link", { name: "Admin" }));
 
-  expect(await screen.findByRole("heading", { name: "Admin panel" }))
+  expect(await screen.findByRole("heading", { name: "Product management" }))
     .toBeInTheDocument();
 }
 
@@ -186,9 +217,11 @@ describe("Storefront", () => {
       target: { value: "mint" },
     });
 
-    expect(screen.queryByRole("heading", { name: "Lavender Soap" }))
-      .not.toBeInTheDocument();
-    expect(screen.getByText("No matching products")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Lavender Soap" }))
+        .not.toBeInTheDocument();
+      expect(screen.getByText("No matching products")).toBeInTheDocument();
+    });
   });
 
   it("shows an out-of-stock status when quantity is zero", async () => {
@@ -293,6 +326,7 @@ describe("Admin product management", () => {
         description: "Fresh mint soap",
         price: 9,
         quantityOnHand: 20,
+        tags: [],
       });
     });
   });
@@ -302,7 +336,10 @@ describe("Admin product management", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
 
-    expect(screen.getByLabelText("Product name")).toHaveValue("Lavender Soap");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Product name"))
+        .toHaveValue("Lavender Soap");
+    });
 
     fireEvent.change(screen.getByLabelText("Product name"), {
       target: { value: "Lavender and Mint Soap" },
@@ -315,6 +352,7 @@ describe("Admin product management", () => {
         description: "Handmade lavender bar",
         price: 8.5,
         quantityOnHand: 12,
+        tags: [],
       });
     });
   });
@@ -354,5 +392,171 @@ describe("Admin product management", () => {
     expect(
       await screen.findByText("Could not create product.", { selector: '[role="alert"]' })
     ).toBeInTheDocument();
+  });
+});
+
+
+describe("admin management actions", () => {
+  const sampleOrder: AdminOrder = {
+    id: "order-1",
+    status: "Paid",
+    fulfillmentStatus: "Unfulfilled",
+    shipments: [],
+    currency: "usd",
+    subtotalAmount: 16,
+    shippingAmount: 5,
+    totalAmount: 21,
+    shippingServiceToken: null,
+    shippingServiceName: null,
+    shippingProvider: null,
+    shippingName: "Test Customer",
+    shippingStreet1: "123 Main St",
+    shippingStreet2: null,
+    shippingCity: "Rockford",
+    shippingState: "IL",
+    shippingPostalCode: "61101",
+    shippingCountry: "US",
+    createdAtUtc: "2026-01-01T00:00:00Z",
+    paidAtUtc: "2026-01-01T00:05:00Z",
+    items: [
+      {
+        productId: "product-1",
+        productName: "Lavender Soap",
+        unitPrice: 8,
+        quantity: 2,
+      },
+    ],
+    customerEmail: "customer@example.com",
+    userId: "user-1",
+    isArchived: false,
+  };
+
+  async function renderAdminRoute(path: string) {
+    vi.mocked(api.getCurrentUser).mockResolvedValue(adminUser);
+    renderApp(path);
+    expect(await screen.findByText(adminUser.email)).toBeInTheDocument();
+  }
+
+  it("hides an active product through the visibility API", async () => {
+    await renderAdminRoute("/admin/products");
+
+    const hideButton = await screen.findByRole("button", { name: "Hide" });
+    fireEvent.click(hideButton);
+
+    await waitFor(() => {
+      expect(api.setProductVisibility).toHaveBeenCalledWith("product-1", false);
+    });
+  });
+
+  it("unhides a hidden product through the visibility API", async () => {
+    vi.mocked(api.getAdminProducts).mockResolvedValue({
+      items: [{ ...sampleProduct, isActive: false }],
+      totalCount: 1,
+      page: 1,
+      pageSize: 10,
+      totalPages: 1,
+    });
+
+    await renderAdminRoute("/admin/products");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Unhide" }),
+    );
+
+    await waitFor(() => {
+      expect(api.setProductVisibility).toHaveBeenCalledWith("product-1", true);
+    });
+  });
+
+  it("archives an active order through the archive API", async () => {
+    vi.mocked(api.getAdminOrders).mockResolvedValue({
+      items: [sampleOrder],
+      totalCount: 1,
+      page: 1,
+      pageSize: 10,
+      totalPages: 1,
+    });
+
+    await renderAdminRoute("/admin/orders");
+
+    fireEvent.click(await screen.findByText("customer@example.com"));
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Archive order" }),
+    );
+
+    await waitFor(() => {
+      expect(api.setOrderArchived).toHaveBeenCalledWith("order-1", true);
+    });
+  });
+
+  it("restores an archived order through the archive API", async () => {
+    vi.mocked(api.getAdminOrders).mockResolvedValue({
+      items: [{ ...sampleOrder, isArchived: true }],
+      totalCount: 1,
+      page: 1,
+      pageSize: 10,
+      totalPages: 1,
+    });
+
+    await renderAdminRoute("/admin/orders");
+
+    fireEvent.click(await screen.findByText("customer@example.com"));
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Unarchive order" }),
+    );
+
+    await waitFor(() => {
+      expect(api.setOrderArchived).toHaveBeenCalledWith("order-1", false);
+    });
+  });
+
+  it("requests archived orders when the order view filter changes", async () => {
+    await renderAdminRoute("/admin/orders");
+
+    fireEvent.change(await screen.findByLabelText("Order view"), {
+      target: { value: "archived" },
+    });
+
+    await waitFor(() => {
+      expect(api.getAdminOrders).toHaveBeenLastCalledWith(
+        expect.objectContaining({ archive: "archived", page: 1 }),
+      );
+    });
+  });
+
+  it("shows an error when changing product visibility fails", async () => {
+    vi.mocked(api.setProductVisibility).mockRejectedValueOnce(
+      new Error("Visibility update failed"),
+    );
+
+    await renderAdminRoute("/admin/products");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Hide" }));
+
+    expect(await screen.findByText("Visibility update failed")).toBeInTheDocument();
+  });
+
+  it("shows an error when archiving an order fails", async () => {
+    vi.mocked(api.getAdminOrders).mockResolvedValue({
+      items: [sampleOrder],
+      totalCount: 1,
+      page: 1,
+      pageSize: 10,
+      totalPages: 1,
+    });
+    vi.mocked(api.setOrderArchived).mockRejectedValueOnce(
+      new Error("Archive update failed"),
+    );
+
+    await renderAdminRoute("/admin/orders");
+
+    fireEvent.click(await screen.findByText("customer@example.com"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Archive order" }),
+    );
+
+    expect(await screen.findByText("Archive update failed")).toBeInTheDocument();
   });
 });
