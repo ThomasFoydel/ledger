@@ -1,64 +1,112 @@
 # Ledger
 
-Ledger is a REST API for product management, built with ASP.NET Core and PostgreSQL. It demonstrates REST API design, database persistence, automated testing, containerization, and CI/CD.
+Ledger is a full-stack storefront and order management application built for Pax Romana, a handmade soap business. Customers can browse products, manage a cart, calculate shipping, and pay through Stripe Checkout. The owner can manage products, storefront content, and customer orders through an authenticated admin area.
 
-## Live API
+**Live storefront:** [https://paxromana.onrender.com/](https://paxromana.onrender.com/)  
+**API:** [https://ledger-0g6r.onrender.com](https://ledger-0g6r.onrender.com)  
+**API health:** [https://ledger-0g6r.onrender.com/health](https://ledger-0g6r.onrender.com/health)
 
-**Base URL:** https://ledger-0g6r.onrender.com
+## Architecture
 
-### Endpoints
+The frontend and backend are separate applications deployed as separate Render services.
 
-| Method | Endpoint         | Description                        |
-| ------ | ---------------- | ---------------------------------- |
-| GET    | `/health`        | Check API health                   |
-| GET    | `/products`      | List active products               |
-| GET    | `/products/{id}` | Get a product by ID                |
-| POST   | `/products`      | Create a product                   |
-| PUT    | `/products/{id}` | Update a product                   |
-| DELETE | `/products/{id}` | Deactivate a product (soft delete) |
+```text
+Customer / Store Owner
+         |
+         v
+React + TypeScript + Vite
+         |
+         v
+ASP.NET Core Minimal API (.NET 8)
+    |       |        |        |
+    v       v        v        v
+PostgreSQL  Object   Stripe   External
+  (Neon)    Storage  Checkout Services
+            (S3)             Shippo, Gmail
+```
 
-The API is hosted on Render, with PostgreSQL provided by Neon. The free web service may sleep after inactivity, so the first request after a period of inactivity may take longer.
+- **Frontend:** React, TypeScript, React Router, and Vite.
+- **Backend:** ASP.NET Core Minimal APIs on .NET 8.
+- **Data access:** Entity Framework Core and Npgsql.
+- **Database:** PostgreSQL hosted by Neon.
+- **Object storage:** S3-compatible storage accessed through the AWS SDK for product images and storefront assets.
+- **Payments:** Stripe Checkout and a webhook endpoint for payment events.
+- **Shipping:** Shippo integration for retrieving shipping rates.
+- **Email:** Gmail-based email service and a background shipment notification queue.
+- **Authentication:** ASP.NET Core Identity with cookie authentication, antiforgery protection, and an owner-only authorization policy.
 
-## Tech Stack
+## Features
 
-- C# and .NET 8
-- ASP.NET Core Minimal APIs
-- Entity Framework Core
-- PostgreSQL and Npgsql
-- xUnit and ASP.NET Core integration testing
-- Docker
-- GitHub Actions for continuous integration and database migrations
-- Render and Neon for hosting
+### Storefront
+
+- Browse products and view product details and images.
+- Organize products with tags.
+- Add products to a shopping cart.
+- Retrieve shipping rates and select a shipping method.
+- Complete payment through Stripe Checkout.
+- View order history and checkout status.
+- Customize storefront branding and content, including the page title, header, hero content, footer, logo, and favicon.
+
+### Product management
+
+- Create, edit, and deactivate products.
+- Manage descriptions, prices, inventory quantities, and tags.
+- Upload product images.
+- Search and filter products by visibility.
+- Show or hide products without permanently deleting them.
+
+### Order management
+
+- View customer orders in the owner-only admin area.
+- Search orders and filter active or archived orders.
+- Archive and restore orders.
+- Review order and shipping details.
+- Update shipment tracking information.
+
+## Technology Stack
+
+| Area             | Technologies                            |
+| ---------------- | --------------------------------------- |
+| Backend          | C#, .NET 8, ASP.NET Core Minimal APIs   |
+| Data access      | Entity Framework Core, Npgsql           |
+| Database         | PostgreSQL, Neon                        |
+| Frontend         | React, TypeScript, React Router, Vite   |
+| Authentication   | ASP.NET Core Identity                   |
+| Payments         | Stripe Checkout                         |
+| Shipping         | Shippo                                  |
+| Email            | Gmail integration                       |
+| Object storage   | S3-compatible storage, AWS SDK for .NET |
+| Backend testing  | xUnit, ASP.NET Core integration testing |
+| Frontend testing | Vitest, Testing Library                 |
+| Containerization | Docker                                  |
+| CI/CD            | GitHub Actions                          |
+| Hosting          | Render and Neon                         |
 
 ## Run Locally
 
 ### Prerequisites
 
 - .NET 8 SDK
-- Docker
+- Node.js and npm
 - PostgreSQL
 
-### 1. Start PostgreSQL
+### 1. Configure the backend
 
-Start a local PostgreSQL instance and ensure it is accessible on port `5433`, with a database named `ledger` and a user named `ledger`.
-
-### 2. Configure the connection string
-
-From the repository root, initialize User Secrets for the API project and set the local database connection string:
+Initialize User Secrets for the API project and configure a local PostgreSQL connection string:
 
 ```bash
-cd src/Ledger.Api
-dotnet user-secrets init
+dotnet user-secrets init --project src/Ledger.Api
+
 dotnet user-secrets set "ConnectionStrings:Ledger" \
-  "Host=localhost;Port=5433;Database=ledger;Username=ledger;Password=YOUR_LOCAL_PASSWORD"
-cd ../..
+  "Host=localhost;Port=5433;Database=ledger;Username=ledger;Password=YOUR_LOCAL_PASSWORD" \
+  --project src/Ledger.Api
 ```
 
-Replace `YOUR_LOCAL_PASSWORD` with your local PostgreSQL password. User Secrets keeps local credentials out of source control.
+Replace `YOUR_LOCAL_PASSWORD` with your local PostgreSQL password. This example assumes a database named `ledger`, a user named `ledger`, and PostgreSQL listening on port `5433`.
 
-### 3. Apply database migrations
+The application also uses configuration for external integrations, including object storage, Stripe, Shippo, Gmail, frontend CORS, and optional owner provisioning. Configure the integrations you intend to use before exercising those features. Keep credentials in User Secrets or environment variables; do not commit them.
 
-From the repository root:
+### 2. Apply database migrations
 
 ```bash
 dotnet ef database update \
@@ -66,39 +114,75 @@ dotnet ef database update \
   --startup-project src/Ledger.Api
 ```
 
-### 4. Run the API
+### 3. Run the backend
 
 ```bash
 dotnet run --project src/Ledger.Api
 ```
 
-Use the URL printed in the terminal to access the API. Swagger UI is available at `/swagger` only when enabled by the current application configuration.
+Swagger UI is enabled in the Development environment.
 
-## Tests
+### 4. Run the frontend
 
-Run the test suite from the repository root:
+In a separate terminal, from the repository root:
+
+```bash
+npm --prefix frontend install
+npm --prefix frontend run dev
+```
+
+Vite proxies requests from `/api` to the local API at `http://localhost:5048`. Set `VITE_API_BASE_URL` to override the frontend API base URL. It defaults to `/api`.
+
+## Tests and Quality Checks
+
+Run the backend test suite:
 
 ```bash
 dotnet test Ledger.sln
 ```
 
-GitHub Actions builds the solution and runs the tests on pushes and pull requests. A Husky.Net pre-commit hook also runs the tests locally before each commit.
+Run the frontend tests:
+
+```bash
+npm --prefix frontend test
+```
+
+Build the frontend:
+
+```bash
+npm --prefix frontend run build
+```
+
+Run the frontend linter:
+
+```bash
+npm --prefix frontend run lint
+```
+
+GitHub Actions restores, builds, and tests the .NET solution on pushes and pull requests.
 
 ## Deployment
 
-- **API:** Render builds and hosts the API using the repository's `Dockerfile`.
-- **Database:** Neon PostgreSQL.
-- **Continuous integration:** GitHub Actions restores, builds, and tests the solution.
-- **Database migrations:** The `Migrate Database` GitHub Actions workflow can be triggered manually to apply pending EF Core migrations to Neon.
+- **Frontend:** Hosted on Render at [paxromana.onrender.com](https://paxromana.onrender.com/).
+- **Backend:** Built using the repository Dockerfile and hosted on Render.
+- **Database:** PostgreSQL hosted by Neon.
+- **Object storage:** S3-compatible object storage configured through environment variables.
+- **Backend deployment workflow:** The `Migrate and Deploy` GitHub Actions workflow runs on pushes to `master`. It applies pending EF Core migrations to Neon and then triggers the Render backend deployment.
+- **Manual migrations:** The `Migrate Database` workflow can be run manually from GitHub Actions to apply pending migrations.
 
-The migration workflow reads the database connection string from the `NEON_CONNECTION_STRING` GitHub Actions secret. Production credentials should never be committed to source control.
+The deployment workflows use GitHub Actions secrets for production credentials, including the Neon connection string and Render deploy hook. Production secrets and API keys should never be committed to the repository.
 
 ## Project Structure
 
 ```text
-src/Ledger.Api/       API endpoints, models, and database context
-tests/Ledger.Tests/   Integration tests
-.github/workflows/    CI and database migration workflows
-Dockerfile            Container build configuration
-.dockerignore         Files excluded from the Docker build context
+.
+├── .github/workflows/    # CI, backend deployment, and database migration workflows
+├── frontend/             # React and TypeScript storefront
+├── src/
+│   └── Ledger.Api/       # ASP.NET Core API, endpoints, data, and services
+├── tests/
+│   └── Ledger.Tests/     # Backend tests
+├── Dockerfile            # Multi-stage backend container build
+├── Ledger.sln            # .NET solution
+└── README.md
 ```
