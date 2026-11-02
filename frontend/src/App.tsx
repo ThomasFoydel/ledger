@@ -2060,11 +2060,7 @@ function App() {
                 <input
                   id="product-tags"
                   type="text"
-<<<<<<< HEAD
                   value={form.tags.join(",")}
-=======
-                  value={form.tags.join(", ")}
->>>>>>> 7255d196c968d4b1bbaa698460f9b1c1bbf14320
                   onChange={(event) =>
                     setForm({ ...form, tags: event.target.value.split(",") })
                   }
