@@ -2060,7 +2060,7 @@ function App() {
                 <input
                   id="product-tags"
                   type="text"
-                  value={form.tags.join(", ")}
+                  value={form.tags.join(",")}
                   onChange={(event) =>
                     setForm({ ...form, tags: event.target.value.split(",") })
                   }
