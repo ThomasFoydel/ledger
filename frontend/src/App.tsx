@@ -2055,6 +2055,24 @@ function App() {
                 />
               </div>
 
+              <div className="field">
+                <label htmlFor="product-tags">Search tags</label>
+                <input
+                  id="product-tags"
+                  type="text"
+                  value={form.tags.join(", ")}
+                  onChange={(event) =>
+                    setForm({ ...form, tags: event.target.value.split(",") })
+                  }
+                  placeholder="e.g. lavender, floral, relaxing"
+                  disabled={submitting}
+                />
+                <p className="muted">
+                  Separate tags with commas. Customers can search these tags,
+                  but they are not displayed on the storefront.
+                </p>
+              </div>
+
               <div className="admin-form-row">
                 <div className="field">
                   <label htmlFor="product-price">Price (USD)</label>
