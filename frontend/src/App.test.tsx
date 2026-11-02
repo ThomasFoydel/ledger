@@ -8,6 +8,11 @@ import type { Product, User } from "./api";
 vi.mock("./api", () => ({
   getCurrentUser: vi.fn(),
   getProducts: vi.fn(),
+  getProductTags: vi.fn(),
+  getAdminProducts: vi.fn(),
+  setProductVisibility: vi.fn(),
+  getAdminOrders: vi.fn(),
+  setOrderArchived: vi.fn(),
   getSiteSettings: vi.fn(),
   updateSiteSettings: vi.fn(),
   uploadSiteLogo: vi.fn(),
@@ -66,7 +71,33 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   vi.resetAllMocks();
   vi.mocked(api.getCurrentUser).mockResolvedValue(null);
-  vi.mocked(api.getProducts).mockResolvedValue([sampleProduct]);
+  vi.mocked(api.getProducts).mockImplementation(async (query) => {
+    if (!query?.trim()) return [sampleProduct];
+
+    const normalizedQuery = query.trim().toLowerCase();
+    return [sampleProduct].filter(
+      (product) =>
+        product.name.toLowerCase().includes(normalizedQuery) ||
+        product.description?.toLowerCase().includes(normalizedQuery),
+    );
+  });
+  vi.mocked(api.getProductTags).mockResolvedValue([]);
+  vi.mocked(api.getAdminProducts).mockResolvedValue({
+    items: [sampleProduct],
+    totalCount: 1,
+    page: 1,
+    pageSize: 20,
+    totalPages: 1,
+  });
+  vi.mocked(api.setProductVisibility).mockResolvedValue(undefined);
+  vi.mocked(api.getAdminOrders).mockResolvedValue({
+    items: [],
+    totalCount: 0,
+    page: 1,
+    pageSize: 20,
+    totalPages: 0,
+  });
+  vi.mocked(api.setOrderArchived).mockResolvedValue(undefined);
   vi.mocked(api.getSiteSettings).mockResolvedValue(testSiteSettings);
   vi.mocked(api.updateSiteSettings).mockResolvedValue(testSiteSettings);
   vi.mocked(api.uploadSiteLogo).mockResolvedValue(testSiteSettings);
@@ -122,7 +153,7 @@ async function signInAsAdmin() {
 
   fireEvent.click(await screen.findByRole("link", { name: "Admin" }));
 
-  expect(await screen.findByRole("heading", { name: "Admin panel" }))
+  expect(await screen.findByRole("heading", { name: "Product management" }))
     .toBeInTheDocument();
 }
 
@@ -186,9 +217,11 @@ describe("Storefront", () => {
       target: { value: "mint" },
     });
 
-    expect(screen.queryByRole("heading", { name: "Lavender Soap" }))
-      .not.toBeInTheDocument();
-    expect(screen.getByText("No matching products")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Lavender Soap" }))
+        .not.toBeInTheDocument();
+      expect(screen.getByText("No matching products")).toBeInTheDocument();
+    });
   });
 
   it("shows an out-of-stock status when quantity is zero", async () => {
@@ -293,6 +326,7 @@ describe("Admin product management", () => {
         description: "Fresh mint soap",
         price: 9,
         quantityOnHand: 20,
+        tags: [],
       });
     });
   });
@@ -302,7 +336,10 @@ describe("Admin product management", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
 
-    expect(screen.getByLabelText("Product name")).toHaveValue("Lavender Soap");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Product name"))
+        .toHaveValue("Lavender Soap");
+    });
 
     fireEvent.change(screen.getByLabelText("Product name"), {
       target: { value: "Lavender and Mint Soap" },
@@ -315,6 +352,7 @@ describe("Admin product management", () => {
         description: "Handmade lavender bar",
         price: 8.5,
         quantityOnHand: 12,
+        tags: [],
       });
     });
   });

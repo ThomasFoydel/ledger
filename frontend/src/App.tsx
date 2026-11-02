@@ -13,7 +13,10 @@ import {
   getProductImageUrl,
   uploadProductImage,
   getOrders,
+  getAdminProducts,
+  setProductVisibility,
   getAdminOrders,
+  setOrderArchived,
   updateOrderShipmentTracking,
   login,
   register,
@@ -229,7 +232,10 @@ function AdminShipmentTrackingForm({
 function App() {
   const { pathname, search: locationSearch } = useLocation();
   const navigate = useNavigate();
-  const isAdminRoute = pathname === "/admin";
+  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isAdminProductsRoute = pathname === "/admin/products";
+  const isAdminStorefrontRoute = pathname === "/admin/storefront";
+  const isAdminOrdersRoute = pathname === "/admin/orders";
   const isCartRoute = pathname === "/cart";
   const isOrdersRoute = pathname === "/orders";
   const isCheckoutSuccessRoute = pathname === "/checkout/success";
@@ -244,9 +250,26 @@ function App() {
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState("");
+  const [adminProducts, setAdminProducts] = useState<Product[]>([]);
+  const [adminProductsLoading, setAdminProductsLoading] = useState(false);
+  const [adminProductsError, setAdminProductsError] = useState("");
+  const [adminProductsTotalCount, setAdminProductsTotalCount] = useState(0);
+  const [adminProductsTotalPages, setAdminProductsTotalPages] = useState(0);
+  const [adminProductSearch, setAdminProductSearch] = useState("");
+  const [adminProductVisibility, setAdminProductVisibility] =
+    useState<"active" | "hidden" | "all">("active");
+  const [adminProductPage, setAdminProductPage] = useState(1);
+
   const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
   const [adminOrdersLoading, setAdminOrdersLoading] = useState(false);
   const [adminOrdersError, setAdminOrdersError] = useState("");
+  const [adminOrdersTotalCount, setAdminOrdersTotalCount] = useState(0);
+  const [adminOrdersTotalPages, setAdminOrdersTotalPages] = useState(0);
+  const [adminOrderSearch, setAdminOrderSearch] = useState("");
+  const [adminOrderArchive, setAdminOrderArchive] =
+    useState<"active" | "archived" | "all">("active");
+  const [adminOrderPage, setAdminOrderPage] = useState(1);
+  const [adminActionId, setAdminActionId] = useState<string | null>(null);
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem(CART_STORAGE_KEY);
@@ -422,11 +445,41 @@ function App() {
     }
   }, []);
 
+  const loadAdminProducts = useCallback(async () => {
+    setAdminProductsLoading(true);
+    setAdminProductsError("");
+    try {
+      const result = await getAdminProducts({
+        search: adminProductSearch,
+        visibility: adminProductVisibility,
+        page: adminProductPage,
+        pageSize: 10,
+      });
+      setAdminProducts(result.items);
+      setAdminProductsTotalCount(result.totalCount);
+      setAdminProductsTotalPages(result.totalPages);
+    } catch (err) {
+      setAdminProductsError(
+        err instanceof Error ? err.message : "Unable to load products.",
+      );
+    } finally {
+      setAdminProductsLoading(false);
+    }
+  }, [adminProductSearch, adminProductVisibility, adminProductPage]);
+
   const loadAdminOrders = useCallback(async () => {
     setAdminOrdersLoading(true);
     setAdminOrdersError("");
     try {
-      setAdminOrders(await getAdminOrders());
+      const result = await getAdminOrders({
+        search: adminOrderSearch,
+        archive: adminOrderArchive,
+        page: adminOrderPage,
+        pageSize: 10,
+      });
+      setAdminOrders(result.items);
+      setAdminOrdersTotalCount(result.totalCount);
+      setAdminOrdersTotalPages(result.totalPages);
     } catch (err) {
       setAdminOrdersError(
         err instanceof Error ? err.message : "Unable to load all orders.",
@@ -434,7 +487,38 @@ function App() {
     } finally {
       setAdminOrdersLoading(false);
     }
-  }, []);
+  }, [adminOrderSearch, adminOrderArchive, adminOrderPage]);
+
+  async function handleSetProductVisibility(product: Product) {
+    const nextIsActive = !product.isActive;
+    setAdminActionId(product.id);
+    setAdminProductsError("");
+    try {
+      await setProductVisibility(product.id, nextIsActive);
+      await Promise.all([loadAdminProducts(), loadProducts()]);
+    } catch (err) {
+      setAdminProductsError(
+        err instanceof Error ? err.message : "Unable to update product visibility.",
+      );
+    } finally {
+      setAdminActionId(null);
+    }
+  }
+
+  async function handleSetOrderArchived(order: AdminOrder) {
+    setAdminActionId(order.id);
+    setAdminOrdersError("");
+    try {
+      await setOrderArchived(order.id, !order.isArchived);
+      await loadAdminOrders();
+    } catch (err) {
+      setAdminOrdersError(
+        err instanceof Error ? err.message : "Unable to update order archive status.",
+      );
+    } finally {
+      setAdminActionId(null);
+    }
+  }
 
   useEffect(() => {
     if (!loading && isOrdersRoute && user) {
@@ -443,10 +527,20 @@ function App() {
   }, [loading, isOrdersRoute, user, loadOrders]);
 
   useEffect(() => {
-    if (!loading && isAdminRoute && user?.isAdmin) {
-      void Promise.resolve().then(() => loadAdminOrders());
+    if (!loading && isAdminProductsRoute && user?.isAdmin) {
+      void Promise.resolve().then(() => loadAdminProducts());
     }
-  }, [loading, isAdminRoute, user, loadAdminOrders]);
+  }, [loading, isAdminProductsRoute, user, loadAdminProducts]);
+
+  useEffect(() => {
+    if (loading || !isAdminOrdersRoute || !user?.isAdmin) return;
+
+    const timeoutId = window.setTimeout(() => {
+      void loadAdminOrders();
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loading, isAdminOrdersRoute, user, loadAdminOrders]);
 
   useEffect(() => {
     let active = true;
@@ -488,9 +582,20 @@ function App() {
   useEffect(() => {
     if (loading) return;
     const validProductRoute = /^\/products\/[^/]+$/.test(pathname);
+    const validAdminRoute =
+      pathname === "/admin" ||
+      pathname === "/admin/products" ||
+      pathname === "/admin/storefront" ||
+      pathname === "/admin/orders";
+
+    if (pathname === "/admin") {
+      navigate(user?.isAdmin ? "/admin/products" : "/", { replace: true });
+      return;
+    }
+
     if (
       pathname !== "/" &&
-      pathname !== "/admin" &&
+      !validAdminRoute &&
       pathname !== "/cart" &&
       pathname !== "/orders" &&
       pathname !== "/checkout/success" &&
@@ -688,6 +793,9 @@ function App() {
       setLoginOpen(false);
 
       await loadProducts();
+      if (currentUser.isAdmin) {
+        navigate("/admin/products", { replace: true });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in.");
     } finally {
@@ -759,7 +867,7 @@ function App() {
       setEditingId(product.id);
       setPendingProductImageFile(null);
       setProductImagePreviewUrl(null);
-      navigate("/admin");
+      navigate("/admin/products");
     } catch (err) {
       setError(
         err instanceof Error
@@ -993,11 +1101,13 @@ function App() {
       }
 
       await loadProducts();
+      if (isAdminProductsRoute) await loadAdminProducts();
       resetForm();
     } catch (err) {
       if (productSaved) {
         try {
           await loadProducts();
+          if (isAdminProductsRoute) await loadAdminProducts();
         } catch {
           // Preserve the original save or upload error.
         }
@@ -1058,7 +1168,7 @@ function App() {
   return (
     <main className="storefront">
       <header className="site-header">
-        <a className="brand" href={isAdminRoute ? "/" : "#home"} aria-label={`${siteSettings.headerText} home`}>
+        <Link className="brand" to="/" aria-label={`${siteSettings.headerText} home`}>
           {siteSettings.logoUrl ? (
             <img className="brand-logo" src={siteSettings.logoUrl} alt="" />
           ) : (
@@ -1067,7 +1177,7 @@ function App() {
             </span>
           )}
           <span>{siteSettings.headerText}</span>
-        </a>
+        </Link>
 
         <nav className="header-actions" aria-label="Account">
           {!isAdminRoute && (
@@ -2033,15 +2143,43 @@ function App() {
           <div className="admin-section-heading">
             <div>
               <p className="eyebrow">STORE MANAGEMENT</p>
-              <h2>Admin panel</h2>
+              <h2>{isAdminOrdersRoute ? "Order management" : isAdminStorefrontRoute ? "Storefront content" : "Product management"}</h2>
               <a href="/">Back to storefront</a>
+              <nav className="admin-nav" aria-label="Admin navigation">
+                <Link
+                  className="admin-nav-link"
+                  to="/admin/orders"
+                  aria-current={isAdminOrdersRoute ? "page" : undefined}
+                >
+                  Orders
+                </Link>
+                <Link
+                  className="admin-nav-link"
+                  to="/admin/products"
+                  aria-current={isAdminProductsRoute ? "page" : undefined}
+                >
+                  Products
+                </Link>
+                <Link
+                  className="admin-nav-link"
+                  to="/admin/storefront"
+                  aria-current={isAdminStorefrontRoute ? "page" : undefined}
+                >
+                  Storefront
+                </Link>
+              </nav>
               <p className="muted">
-                Manage your catalog and inventory.
+                {isAdminOrdersRoute
+                  ? "Review orders, manage fulfillment, and track shipments."
+                  : isAdminStorefrontRoute
+                    ? "Update your store identity, page content, logo, and favicon."
+                    : "Manage your product catalog and inventory."}
               </p>
             </div>
             <span className="admin-badge">Owner access</span>
           </div>
 
+          {isAdminOrdersRoute && (
           <div className="admin-card admin-orders-card">
             <div className="admin-orders-heading">
               <div>
@@ -2052,6 +2190,7 @@ function App() {
               </div>
               <button
                 type="button"
+                className="button button-secondary"
                 onClick={() => void loadAdminOrders()}
                 disabled={adminOrdersLoading}
               >
@@ -2059,7 +2198,38 @@ function App() {
               </button>
             </div>
 
-            {adminOrdersLoading ? (
+            <div className="admin-list-filters">
+              <div className="field">
+                <label htmlFor="admin-order-search">Search orders</label>
+                <input
+                  id="admin-order-search"
+                  type="search"
+                  value={adminOrderSearch}
+                  placeholder="Email, name, city, status, tracking…"
+                  onChange={(event) => {
+                    setAdminOrderSearch(event.target.value);
+                    setAdminOrderPage(1);
+                  }}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="admin-order-archive">Order view</label>
+                <select
+                  id="admin-order-archive"
+                  value={adminOrderArchive}
+                  onChange={(event) => {
+                    setAdminOrderArchive(event.target.value as "active" | "archived" | "all");
+                    setAdminOrderPage(1);
+                  }}
+                >
+                  <option value="active">Active orders</option>
+                  <option value="archived">Archived orders</option>
+                  <option value="all">All orders</option>
+                </select>
+              </div>
+            </div>
+
+            {adminOrdersLoading && adminOrders.length === 0 ? (
               <p>Loading orders…</p>
             ) : adminOrdersError ? (
               <div>
@@ -2071,11 +2241,15 @@ function App() {
                 </button>
               </div>
             ) : adminOrders.length === 0 ? (
-              <p>No orders have been placed yet.</p>
+              <p className="muted">
+                {adminOrdersTotalCount === 0
+                  ? "No matching orders were found."
+                  : "No orders on this page."}
+              </p>
             ) : (
               <>
                 <p className="muted">
-                  {adminOrders.length} {adminOrders.length === 1 ? "order" : "orders"}
+                  Showing {adminOrders.length} of {adminOrdersTotalCount} orders
                 </p>
 
                 <div className="admin-orders-list">
@@ -2097,6 +2271,19 @@ function App() {
                       </summary>
 
                       <div className="admin-order-details">
+                        <div className="form-actions">
+                          <button
+                            type="button"
+                            className="button button-secondary"
+                            onClick={() => void handleSetOrderArchived(order)}
+                            disabled={adminActionId === order.id}
+                          >
+                            {adminActionId === order.id
+                              ? "Updating…"
+                              : order.isArchived ? "Unarchive order" : "Archive order"}
+                          </button>
+                          {order.isArchived && <span className="muted">Archived</span>}
+                        </div>
                         <p><strong>Order ID:</strong> {order.id}</p>
                         <p><strong>Payment status:</strong> {order.status}</p>
                         {order.paidAtUtc && (
@@ -2176,10 +2363,36 @@ function App() {
                     </details>
                   ))}
                 </div>
+                <div className="admin-pagination">
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    disabled={adminOrderPage <= 1 || adminOrdersLoading}
+                    onClick={() => setAdminOrderPage((page) => page - 1)}
+                  >
+                    Previous
+                  </button>
+                  <span>
+                    Showing {adminOrdersTotalCount === 0 ? 0 : (adminOrderPage - 1) * 10 + 1}–
+                    {Math.min(adminOrderPage * 10, adminOrdersTotalCount)} of {adminOrdersTotalCount}
+                    {" · "}Page {adminOrderPage} of {Math.max(1, adminOrdersTotalPages)}
+                  </span>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    disabled={adminOrderPage >= adminOrdersTotalPages || adminOrdersLoading}
+                    onClick={() => setAdminOrderPage((page) => page + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
               </>
             )}
           </div>
 
+          )}
+
+          {isAdminStorefrontRoute && (
           <div className="admin-card">
             <h3>Storefront content</h3>
             <form className="product-form" onSubmit={handleSaveSiteSettings}>
@@ -2281,48 +2494,10 @@ function App() {
               </div>
             </form>
           </div>
+          )}
 
-          <div className="admin-card">
-            <h3>Manage products</h3>
-
-            {products.length === 0 ? (
-              <p className="muted">No products yet. Add a product below.</p>
-            ) : (
-              <div className="admin-product-list">
-                {products.map((product) => (
-                  <div className="admin-product-row" key={product.id}>
-                    <div>
-                      <strong>{product.name}</strong>
-                      <p className="muted">
-                        {currency.format(product.price)} ·{" "}
-                        {product.quantityOnHand} in stock
-                      </p>
-                    </div>
-
-                    <div className="product-admin-actions">
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => startEditing(product)}
-                        disabled={submitting}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="text-button text-button-danger"
-                        onClick={() => void handleDeleteProduct(product)}
-                        disabled={submitting}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
+          {isAdminProductsRoute && (
+            <>
           <div className="admin-card">
             <h3>{editingId ? "Edit product" : "Add a product"}</h3>
 
@@ -2470,6 +2645,140 @@ function App() {
               </div>
             </form>
           </div>
+
+          <div className="admin-card admin-products-card">
+            <h3>Manage products</h3>
+
+            <div className="admin-list-filters">
+              <div className="field">
+                <label htmlFor="admin-product-search">Search products</label>
+                <input
+                  id="admin-product-search"
+                  type="search"
+                  value={adminProductSearch}
+                  placeholder="Name, description, or tag…"
+                  onChange={(event) => {
+                    setAdminProductSearch(event.target.value);
+                    setAdminProductPage(1);
+                  }}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="admin-product-visibility">Product visibility</label>
+                <select
+                  id="admin-product-visibility"
+                  value={adminProductVisibility}
+                  onChange={(event) => {
+                    setAdminProductVisibility(event.target.value as "active" | "hidden" | "all");
+                    setAdminProductPage(1);
+                  }}
+                >
+                  <option value="active">Active products</option>
+                  <option value="hidden">Hidden products</option>
+                  <option value="all">All products</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => void loadAdminProducts()}
+                disabled={adminProductsLoading}
+              >
+                {adminProductsLoading ? "Refreshing…" : "Refresh"}
+              </button>
+            </div>
+
+            {adminProductsLoading && adminProducts.length === 0 ? (
+              <p>Loading products…</p>
+            ) : adminProductsError ? (
+              <div>
+                <p className="error-message" role="alert">{adminProductsError}</p>
+                <button type="button" onClick={() => void loadAdminProducts()}>
+                  Try again
+                </button>
+              </div>
+            ) : adminProducts.length === 0 ? (
+              <p className="muted">
+                {adminProductsTotalCount === 0
+                  ? "No matching products. You can add a product below."
+                  : "No products on this page."}
+              </p>
+            ) : (
+              <>
+                <p className="muted">
+                  Showing {adminProducts.length} of {adminProductsTotalCount} products
+                </p>
+                <div className="admin-product-list">
+                  {adminProducts.map((product) => (
+                    <div className="admin-product-row" key={product.id}>
+                      <div>
+                        <strong>{product.name}</strong>
+                        <p className="muted">
+                          {currency.format(product.price)} ·{" "}
+                          {product.quantityOnHand} in stock ·{" "}
+                          {product.isActive ? "Visible" : "Hidden"}
+                        </p>
+                      </div>
+                      <div className="product-admin-actions">
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => startEditing(product)}
+                          disabled={submitting || adminActionId === product.id}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => void handleSetProductVisibility(product)}
+                          disabled={adminActionId === product.id}
+                        >
+                          {adminActionId === product.id
+                            ? "Updating…"
+                            : product.isActive ? "Hide" : "Unhide"}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-button text-button-danger"
+                          onClick={() => void handleDeleteProduct(product)}
+                          disabled={submitting || adminActionId === product.id}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="admin-pagination">
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    disabled={adminProductPage <= 1 || adminProductsLoading}
+                    onClick={() => setAdminProductPage((page) => page - 1)}
+                  >
+                    Previous
+                  </button>
+                  <span>
+                    Showing {adminProductsTotalCount === 0 ? 0 : (adminProductPage - 1) * 10 + 1}–
+                    {Math.min(adminProductPage * 10, adminProductsTotalCount)} of {adminProductsTotalCount}
+                    {" · "}Page {adminProductPage} of {Math.max(1, adminProductsTotalPages)}
+                  </span>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    disabled={adminProductPage >= adminProductsTotalPages || adminProductsLoading}
+                    onClick={() => setAdminProductPage((page) => page + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+            </>
+          )}
         </section>
       )}
 

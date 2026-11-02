@@ -53,7 +53,7 @@ public static class ProductEndpoints
             CancellationToken ct) =>
         {
             var productExists = await db.Products
-                .AnyAsync(product => product.Id == id && product.IsActive, ct);
+                .AnyAsync(product => product.Id == id, ct);
 
             if (!productExists)
                 return Results.NotFound();
@@ -161,7 +161,7 @@ public static class ProductEndpoints
             var product = await db.Products
                 .Include(product => product.Tags)
                 .FirstOrDefaultAsync(product =>
-                    product.Id == id && product.IsActive, ct);
+                    product.Id == id, ct);
 
             if (product is null)
                 return Results.NotFound();
@@ -214,7 +214,7 @@ public static class ProductEndpoints
 
             var product = await db.Products
                 .FirstOrDefaultAsync(product =>
-                    product.Id == id && product.IsActive, ct);
+                    product.Id == id, ct);
 
             if (product is null)
                 return Results.NotFound();
@@ -267,6 +267,95 @@ public static class ProductEndpoints
             return Results.NoContent();
         })
         .RequireAuthorization("OwnerOnly");
+
+
+        app.MapGet("/admin/products", async (
+            string? search,
+            string? visibility,
+            int? page,
+            int? pageSize,
+            LedgerDbContext db,
+            CancellationToken ct) =>
+        {
+            var currentPage = Math.Max(1, page ?? 1);
+            var currentPageSize = Math.Clamp(pageSize ?? 20, 1, 100);
+
+            var query = db.Products.AsNoTracking();
+
+            if (string.Equals(visibility, "active", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(product => product.IsActive);
+            else if (string.Equals(visibility, "hidden", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(product => !product.IsActive);
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var pattern = $"%{search.Trim()}%";
+                query = query.Where(product =>
+                    EF.Functions.ILike(product.Name, pattern) ||
+                    (product.Description != null && EF.Functions.ILike(product.Description, pattern)) ||
+                    product.Tags.Any(tag => EF.Functions.ILike(tag.Name, pattern)));
+            }
+
+            var totalCount = await query.CountAsync(ct);
+            var items = await query
+                .OrderBy(product => product.Name)
+                .ThenBy(product => product.Id)
+                .Skip((currentPage - 1) * currentPageSize)
+                .Take(currentPageSize)
+                .Select(product => new ProductResponse(
+                    product.Id,
+                    product.Name,
+                    product.Description,
+                    product.Price,
+                    product.IsActive,
+                    product.CreatedAtUtc,
+                    product.QuantityOnHand,
+                    product.ImageKey != null
+                ))
+                .ToListAsync(ct);
+
+            return Results.Ok(new
+            {
+                items,
+                totalCount,
+                page = currentPage,
+                pageSize = currentPageSize,
+                totalPages = (int)Math.Ceiling(totalCount / (double)currentPageSize)
+            });
+        })
+        .RequireAuthorization("OwnerOnly")
+        .WithName("GetAdminProducts");
+
+        app.MapPut("/admin/products/{id:guid}/visibility", async (
+            Guid id,
+            SetProductVisibilityRequest request,
+            HttpContext http,
+            IAntiforgery antiforgery,
+            LedgerDbContext db,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                await antiforgery.ValidateRequestAsync(http);
+            }
+            catch (AntiforgeryValidationException)
+            {
+                return Results.BadRequest(new { message = "Invalid CSRF token." });
+            }
+
+            var product = await db.Products
+                .FirstOrDefaultAsync(item => item.Id == id, ct);
+
+            if (product is null)
+                return Results.NotFound();
+
+            product.IsActive = request.IsActive;
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(new { product.Id, product.IsActive });
+        })
+        .RequireAuthorization("OwnerOnly")
+        .WithName("SetProductVisibility");
 
         return app;
     }

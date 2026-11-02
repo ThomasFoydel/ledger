@@ -26,3 +26,5 @@ public sealed record ProductResponse(
     int QuantityOnHand,
     bool HasImage
 );
+
+public sealed record SetProductVisibilityRequest(bool IsActive);
