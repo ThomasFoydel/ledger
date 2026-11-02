@@ -4,14 +4,16 @@ public sealed record CreateProductRequest(
     string? Name,
     string? Description,
     decimal Price,
-    int QuantityOnHand
+    int QuantityOnHand,
+    string[]? Tags = null
 );
 
 public sealed record UpdateProductRequest(
     string? Name,
     string? Description,
     decimal Price,
-    int QuantityOnHand
+    int QuantityOnHand,
+    string[]? Tags = null
 );
 
 public sealed record ProductResponse(

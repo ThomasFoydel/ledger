@@ -270,6 +270,35 @@ namespace Ledger.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ledger.Api.Models.ProductTag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName");
+
+                    b.HasIndex("ProductId", "NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("ProductTags");
+                });
+
             modelBuilder.Entity("Ledger.Api.Models.SiteSettings", b =>
                 {
                     b.Property<int>("Id")
@@ -556,6 +585,17 @@ namespace Ledger.Api.Migrations
                     b.Navigation("Order");
                 });
 
+            modelBuilder.Entity("Ledger.Api.Models.ProductTag", b =>
+                {
+                    b.HasOne("Ledger.Api.Models.Product", "Product")
+                        .WithMany("Tags")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -612,6 +652,11 @@ namespace Ledger.Api.Migrations
                     b.Navigation("Items");
 
                     b.Navigation("Shipments");
+                });
+
+            modelBuilder.Entity("Ledger.Api.Models.Product", b =>
+                {
+                    b.Navigation("Tags");
                 });
 #pragma warning restore 612, 618
         }

@@ -9,6 +9,7 @@ public class LedgerDbContext(DbContextOptions<LedgerDbContext> options)
     : IdentityDbContext<IdentityUser>(options)
 {
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductTag> ProductTags => Set<ProductTag>();
     public DbSet<SiteSettings> SiteSettings => Set<SiteSettings>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
@@ -119,5 +120,22 @@ public class LedgerDbContext(DbContextOptions<LedgerDbContext> options)
                     "CK_Products_QuantityOnHand_NonNegative",
                     "\"QuantityOnHand\" >= 0"));
         });
+
+        modelBuilder.Entity<ProductTag>(entity =>
+        {
+            entity.HasKey(tag => tag.Id);
+            entity.Property(tag => tag.Name).HasMaxLength(40).IsRequired();
+            entity.Property(tag => tag.NormalizedName).HasMaxLength(40).IsRequired();
+
+            entity.HasIndex(tag => new { tag.ProductId, tag.NormalizedName })
+                .IsUnique();
+            entity.HasIndex(tag => tag.NormalizedName);
+
+            entity.HasOne(tag => tag.Product)
+                .WithMany(product => product.Tags)
+                .HasForeignKey(tag => tag.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
     }
 }
