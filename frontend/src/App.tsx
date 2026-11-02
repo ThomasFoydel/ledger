@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   createCheckoutSession,
@@ -265,6 +265,10 @@ function App() {
       return [];
     }
   });
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
+  const cartDrawerRef = useRef<HTMLElement>(null);
+  const cartTriggerRef = useRef<HTMLButtonElement>(null);
+
   const [shippingDestination, setShippingDestination] =
     useState<ShippingDestination>({
       name: "",
@@ -284,11 +288,11 @@ function App() {
 
   const [detailQuantityState, setDetailQuantityState] = useState({
     pathname,
-    quantity: 1,
+    quantity: "1",
   });
   const detailQuantity =
-    detailQuantityState.pathname === pathname ? detailQuantityState.quantity : 1;
-  const setDetailQuantity = (quantity: number) =>
+    detailQuantityState.pathname === pathname ? detailQuantityState.quantity : "1";
+  const setDetailQuantity = (quantity: string) =>
     setDetailQuantityState({ pathname, quantity });
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(defaultSiteSettings);
   const [siteSettingsForm, setSiteSettingsForm] = useState<SiteSettings>(defaultSiteSettings);
@@ -303,6 +307,10 @@ function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [form, setForm] = useState<ProductInput>(emptyProduct);
+  const [priceDraft, setPriceDraft] = useState("0");
+  const [quantityDraft, setQuantityDraft] = useState("0");
+  const [cartQuantityDrafts, setCartQuantityDrafts] =
+    useState<Record<string, string>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingProductImageFile, setPendingProductImageFile] =
     useState<File | null>(null);
@@ -555,6 +563,59 @@ function App() {
     0,
   );
 
+  useEffect(() => {
+    if (!cartDrawerOpen) return;
+
+    const previousActiveElement =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const previousOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    cartDrawerRef.current?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setCartDrawerOpen(false);
+        return;
+      }
+
+      if (event.key !== "Tab" || !cartDrawerRef.current) return;
+
+      const focusable = Array.from(
+        cartDrawerRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => element.getAttribute("aria-hidden") !== "true");
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        cartDrawerRef.current.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [cartDrawerOpen]);
+
   function addToCart(product: Product, quantity = 1) {
     if (!product.isActive || product.quantityOnHand <= 0) {
       setError("This product is currently unavailable.");
@@ -579,6 +640,7 @@ function App() {
       return [...current, { productId: product.id, quantity: nextQuantity }];
     });
     setError("");
+    setCartDrawerOpen(true);
   }
 
   function updateCartQuantity(product: Product, quantity: number) {
@@ -600,6 +662,8 @@ function App() {
 
   function resetForm() {
     setForm(emptyProduct);
+    setPriceDraft("0");
+    setQuantityDraft("0");
     setEditingId(null);
     setPendingProductImageFile(null);
     setProductImagePreviewUrl(null);
@@ -690,6 +754,8 @@ function App() {
         quantityOnHand: product.quantityOnHand,
         tags,
       });
+      setPriceDraft(String(product.price));
+      setQuantityDraft(String(product.quantityOnHand));
       setEditingId(product.id);
       setPendingProductImageFile(null);
       setProductImagePreviewUrl(null);
@@ -873,13 +939,36 @@ function App() {
   async function handleSaveProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+
+    const price = Number(priceDraft);
+    const quantityOnHand = Number(quantityDraft);
+
+    if (
+      priceDraft.trim() === "" ||
+      !Number.isFinite(price) ||
+      price < 0 ||
+      price > 99999999.99
+    ) {
+      setError("Enter a valid price between 0 and 99,999,999.99.");
+      return;
+    }
+
+    if (
+      quantityDraft.trim() === "" ||
+      !Number.isInteger(quantityOnHand) ||
+      quantityOnHand < 0
+    ) {
+      setError("Enter a valid whole number for quantity on hand.");
+      return;
+    }
+
     setSubmitting(true);
 
     const input: ProductInput = {
       name: form.name.trim(),
       description: form.description.trim(),
-      price: Number(form.price),
-      quantityOnHand: Number(form.quantityOnHand),
+      price,
+      quantityOnHand,
       tags: form.tags.map((tag) => tag.trim()).filter(Boolean),
     };
 
@@ -982,9 +1071,23 @@ function App() {
 
         <nav className="header-actions" aria-label="Account">
           {!isAdminRoute && (
-            <Link className="cart-nav-link" to="/cart">
-              Cart ({cartItemCount})
-            </Link>
+            <button
+              ref={cartTriggerRef}
+              type="button"
+              className="cart-nav-link cart-trigger"
+              onClick={() => setCartDrawerOpen(true)}
+              aria-label={`Open shopping cart, ${cartItemCount} items`}
+              aria-haspopup="dialog"
+              aria-expanded={cartDrawerOpen}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h2l2.2 11.2a2 2 0 0 0 2 1.6h8.9a2 2 0 0 0 1.9-1.4L22 8H6" />
+                <circle cx="10" cy="20" r="1" />
+                <circle cx="18" cy="20" r="1" />
+              </svg>
+              <span>Cart</span>
+              <span className="cart-count-badge">{cartItemCount}</span>
+            </button>
           )}
           {user ? (
             <>
@@ -1324,34 +1427,41 @@ function App() {
                       max={selectedProduct.quantityOnHand}
                       step={1}
                       value={detailQuantity}
-                      onChange={(event) => {
-                        const value = Number(event.target.value);
-                        setDetailQuantity(
-                          Number.isFinite(value)
-                            ? Math.max(
-                                1,
-                                Math.min(
-                                  selectedProduct.quantityOnHand,
-                                  Math.floor(value),
-                                ),
-                              )
-                            : 1,
-                        );
+                      onChange={(event) => setDetailQuantity(event.target.value)}
+                      onBlur={() => {
+                        const value = Number(detailQuantity);
+                        const normalized =
+                          Number.isInteger(value) && value > 0
+                            ? Math.min(value, selectedProduct.quantityOnHand)
+                            : 1;
+                        setDetailQuantity(String(normalized));
                       }}
                     />
                     <button
                       type="button"
                       className="button button-primary"
-                      onClick={() => addToCart(selectedProduct, detailQuantity)}
+                      onClick={() => {
+                        const value = Number(detailQuantity);
+                        const quantity =
+                          Number.isInteger(value) && value > 0
+                            ? Math.min(value, selectedProduct.quantityOnHand)
+                            : 1;
+                        addToCart(selectedProduct, quantity);
+                        setDetailQuantity(String(quantity));
+                      }}
                     >
                       Add to cart
                     </button>
                   </div>
                 )}
                 {error && <p className="error-message" role="alert">{error}</p>}
-                <Link className="continue-shopping-link" to="/cart">
+                <button
+                  type="button"
+                  className="continue-shopping-link detail-cart-link"
+                  onClick={() => setCartDrawerOpen(true)}
+                >
                   View cart ({cartItemCount})
-                </Link>
+                </button>
               </div>
             </div>
           ) : (
@@ -1417,13 +1527,24 @@ function App() {
                         min={1}
                         max={product.quantityOnHand}
                         step={1}
-                        value={quantity}
+                        value={cartQuantityDrafts[product.id] ?? String(quantity)}
                         disabled={product.quantityOnHand === 0}
-                        onChange={(event) => {
-                          const value = Number(event.target.value);
+                        onChange={(event) =>
+                          setCartQuantityDrafts((current) => ({
+                            ...current,
+                            [product.id]: event.target.value,
+                          }))
+                        }
+                        onBlur={(event) => {
+                          const value = Number(event.currentTarget.value);
                           if (Number.isInteger(value) && value > 0) {
                             updateCartQuantity(product, value);
                           }
+                          setCartQuantityDrafts((current) => {
+                            const next = { ...current };
+                            delete next[product.id];
+                            return next;
+                          });
                         }}
                       />
                     </div>
@@ -1648,6 +1769,147 @@ function App() {
             </div>
           )}
         </section>
+      )}
+
+      {!isAdminRoute && cartDrawerOpen && (
+        <div className="cart-drawer-overlay">
+          <button
+            type="button"
+            className="cart-drawer-backdrop"
+            aria-label="Close shopping cart"
+            onClick={() => setCartDrawerOpen(false)}
+          />
+          <aside
+            ref={cartDrawerRef}
+            className="cart-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cart-drawer-title"
+            tabIndex={-1}
+          >
+            <div className="cart-drawer-header">
+              <div>
+                <p className="eyebrow">YOUR SELECTION</p>
+                <h2 id="cart-drawer-title">
+                  Your cart <span>({cartItemCount})</span>
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="cart-drawer-close"
+                aria-label="Close shopping cart"
+                onClick={() => setCartDrawerOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            {cartProductItems.length === 0 ? (
+              <div className="cart-drawer-empty">
+                <span aria-hidden="true">◇</span>
+                <h3>Your cart is empty</h3>
+                <p>Find something worth keeping.</p>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => setCartDrawerOpen(false)}
+                >
+                  Continue shopping
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="cart-drawer-items">
+                  {cartProductItems.map(({ product, quantity }) => (
+                    <article className="cart-drawer-item" key={product.id}>
+                      <div className="cart-drawer-item-art" aria-hidden="true">
+                        {product.name.trim().charAt(0).toLocaleUpperCase()}
+                      </div>
+                      <div className="cart-drawer-item-info">
+                        <Link
+                          to={`/products/${encodeURIComponent(product.id)}`}
+                          onClick={() => setCartDrawerOpen(false)}
+                        >
+                          {product.name}
+                        </Link>
+                        <p>{currency.format(product.price)} each</p>
+                        <div className="cart-drawer-item-controls">
+                          <label
+                            className="visually-hidden"
+                            htmlFor={`drawer-quantity-${product.id}`}
+                          >
+                            Quantity of {product.name}
+                          </label>
+                          <input
+                            id={`drawer-quantity-${product.id}`}
+                            type="number"
+                            min={1}
+                            max={product.quantityOnHand}
+                            step={1}
+                            value={cartQuantityDrafts[product.id] ?? String(quantity)}
+                            disabled={product.quantityOnHand === 0}
+                            onChange={(event) =>
+                              setCartQuantityDrafts((current) => ({
+                                ...current,
+                                [product.id]: event.target.value,
+                              }))
+                            }
+                            onBlur={(event) => {
+                              const value = Number(event.currentTarget.value);
+                              if (Number.isInteger(value) && value > 0) {
+                                updateCartQuantity(product, value);
+                              }
+                              setCartQuantityDrafts((current) => {
+                                const next = { ...current };
+                                delete next[product.id];
+                                return next;
+                              });
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="text-button text-button-danger"
+                            onClick={() => updateCartQuantity(product, 0)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        {product.quantityOnHand === 0 && (
+                          <p className="stock-unavailable">Currently out of stock</p>
+                        )}
+                      </div>
+                      <strong className="cart-drawer-line-total">
+                        {currency.format(product.price * quantity)}
+                      </strong>
+                    </article>
+                  ))}
+                </div>
+
+                <div className="cart-drawer-footer">
+                  <div className="cart-drawer-subtotal">
+                    <span>Subtotal</span>
+                    <strong>{currency.format(cartSubtotal)}</strong>
+                  </div>
+                  <p>Shipping and taxes calculated at checkout.</p>
+                  <Link
+                    className="button button-primary cart-drawer-checkout"
+                    to="/cart"
+                    onClick={() => setCartDrawerOpen(false)}
+                  >
+                    View cart &amp; checkout
+                  </Link>
+                  <button
+                    type="button"
+                    className="cart-drawer-continue"
+                    onClick={() => setCartDrawerOpen(false)}
+                  >
+                    Continue shopping
+                  </button>
+                </div>
+              </>
+            )}
+          </aside>
+        </div>
       )}
 
       {isOrdersRoute && user && (
@@ -2119,10 +2381,8 @@ function App() {
                     max="99999999.99"
                     step="0.01"
                     required
-                    value={form.price}
-                    onChange={(event) =>
-                      setForm({ ...form, price: Number(event.target.value) })
-                    }
+                    value={priceDraft}
+                    onChange={(event) => setPriceDraft(event.target.value)}
                   />
                 </div>
 
@@ -2134,13 +2394,8 @@ function App() {
                     min="0"
                     step="1"
                     required
-                    value={form.quantityOnHand}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        quantityOnHand: Number(event.target.value),
-                      })
-                    }
+                    value={quantityDraft}
+                    onChange={(event) => setQuantityDraft(event.target.value)}
                   />
                 </div>
               </div>
