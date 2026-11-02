@@ -25,6 +25,7 @@ export type ProductInput = {
   description: string;
   price: number;
   quantityOnHand: number;
+  tags: string[];
 };
 
 export function getProductImageUrl(id: string, version = 0): string {
@@ -170,8 +171,34 @@ export async function logout(): Promise<void> {
   }
 }
 
-export async function getProducts(): Promise<Product[]> {
-  const response = await fetch(`${API_PREFIX}/products`, {
+export async function getProductTags(id: string): Promise<string[]> {
+  const response = await fetch(
+    `${API_PREFIX}/products/${encodeURIComponent(id)}/tags`,
+    { credentials: "include" },
+  );
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("You are not authorized to view product tags.");
+  }
+
+  if (response.status === 404) {
+    throw new Error("Product not found.");
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to load product tags.");
+  }
+
+  return response.json() as Promise<string[]>;
+}
+
+export async function getProducts(search = ""): Promise<Product[]> {
+  const query = search.trim();
+  const url = query
+    ? `${API_PREFIX}/products?search=${encodeURIComponent(query)}`
+    : `${API_PREFIX}/products`;
+
+  const response = await fetch(url, {
     credentials: "include",
   });
 

@@ -41,6 +41,7 @@ const emptyProduct: ProductInput = {
   description: "",
   price: 0,
   quantityOnHand: 0,
+  tags: [],
 };
 
 const defaultSiteSettings: SiteSettings = {
@@ -657,6 +658,7 @@ function App() {
       description: product.description ?? "",
       price: product.price,
       quantityOnHand: product.quantityOnHand,
+      tags: [],
     });
     setEditingId(product.id);
     setPendingProductImageFile(null);
@@ -842,6 +844,7 @@ function App() {
       description: form.description.trim(),
       price: Number(form.price),
       quantityOnHand: Number(form.quantityOnHand),
+      tags: form.tags.map((tag) => tag.trim()).filter(Boolean),
     };
 
     let productSaved = false;

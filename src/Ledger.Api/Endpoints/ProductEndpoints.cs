@@ -12,11 +12,25 @@ public static class ProductEndpoints
 
     public static IEndpointRouteBuilder MapProductEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/products", async (LedgerDbContext db, CancellationToken ct) =>
+        app.MapGet("/products", async (
+            string? search,
+            LedgerDbContext db,
+            CancellationToken ct) =>
         {
-            var products = await db.Products
+            var query = db.Products
                 .AsNoTracking()
-                .Where(product => product.IsActive)
+                .Where(product => product.IsActive);
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var pattern = $"%{search.Trim()}%";
+                query = query.Where(product =>
+                    EF.Functions.ILike(product.Name, pattern) ||
+                    (product.Description != null && EF.Functions.ILike(product.Description, pattern)) ||
+                    product.Tags.Any(tag => EF.Functions.ILike(tag.Name, pattern)));
+            }
+
+            var products = await query
                 .OrderBy(product => product.Name)
                 .Select(product => new ProductResponse(
                     product.Id,
@@ -32,6 +46,28 @@ public static class ProductEndpoints
 
             return Results.Ok(products);
         });
+
+        app.MapGet("/products/{id:guid}/tags", async (
+            Guid id,
+            LedgerDbContext db,
+            CancellationToken ct) =>
+        {
+            var productExists = await db.Products
+                .AnyAsync(product => product.Id == id && product.IsActive, ct);
+
+            if (!productExists)
+                return Results.NotFound();
+
+            var tags = await db.ProductTags
+                .AsNoTracking()
+                .Where(tag => tag.ProductId == id)
+                .OrderBy(tag => tag.Name)
+                .Select(tag => tag.Name)
+                .ToListAsync(ct);
+
+            return Results.Ok(tags);
+        })
+        .RequireAuthorization("OwnerOnly");
 
         app.MapGet("/products/{id:guid}", async (
             Guid id,
@@ -84,7 +120,8 @@ public static class ProductEndpoints
                 request.Name,
                 request.Description,
                 request.Price,
-                request.QuantityOnHand);
+                request.QuantityOnHand,
+                request.Tags);
 
             if (errors.Count > 0)
                 return Results.ValidationProblem(errors);
@@ -94,7 +131,8 @@ public static class ProductEndpoints
                 Name = request.Name!.Trim(),
                 Description = NormalizeDescription(request.Description),
                 Price = request.Price,
-                QuantityOnHand = request.QuantityOnHand
+                QuantityOnHand = request.QuantityOnHand,
+                Tags = CreateTags(request.Tags)
             };
 
             db.Products.Add(product);
@@ -114,12 +152,14 @@ public static class ProductEndpoints
                 request.Name,
                 request.Description,
                 request.Price,
-                request.QuantityOnHand);
+                request.QuantityOnHand,
+                request.Tags);
 
             if (errors.Count > 0)
                 return Results.ValidationProblem(errors);
 
             var product = await db.Products
+                .Include(product => product.Tags)
                 .FirstOrDefaultAsync(product =>
                     product.Id == id && product.IsActive, ct);
 
@@ -130,6 +170,10 @@ public static class ProductEndpoints
             product.Description = NormalizeDescription(request.Description);
             product.Price = request.Price;
             product.QuantityOnHand = request.QuantityOnHand;
+
+            product.Tags.Clear();
+            foreach (var tag in CreateTags(request.Tags))
+                product.Tags.Add(tag);
 
             await db.SaveChangesAsync(ct);
 
@@ -226,7 +270,8 @@ public static class ProductEndpoints
         string? name,
         string? description,
         decimal price,
-        int quantityOnHand)
+        int quantityOnHand,
+        string[]? tags)
     {
         var errors = new Dictionary<string, string[]>();
 
@@ -244,8 +289,36 @@ public static class ProductEndpoints
         if (quantityOnHand < 0)
             errors["quantityOnHand"] = ["Quantity cannot be negative."];
 
+        var normalizedTags = NormalizeTags(tags);
+
+        if (normalizedTags.Length > 20)
+            errors["tags"] = ["A product cannot have more than 20 tags."];
+        else if (normalizedTags.Any(tag => tag.Length > 40))
+            errors["tags"] = ["Each tag cannot exceed 40 characters."];
+
         return errors;
     }
+
+    private static string[] NormalizeTags(IEnumerable<string>? tags)
+    {
+        if (tags is null)
+            return [];
+
+        return tags
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Select(tag => tag.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static ICollection<ProductTag> CreateTags(IEnumerable<string>? tags) =>
+        NormalizeTags(tags)
+            .Select(tag => new ProductTag
+            {
+                Name = tag,
+                NormalizedName = tag.ToUpperInvariant()
+            })
+            .ToList();
 
     private static string? NormalizeDescription(string? description) =>
         string.IsNullOrWhiteSpace(description) ? null : description.Trim();
