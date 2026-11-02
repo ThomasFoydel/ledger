@@ -9,6 +9,7 @@ import {
   deleteProduct,
   getCurrentUser,
   getProducts,
+  getProductTags,
   getProductImageUrl,
   uploadProductImage,
   getOrders,
@@ -296,6 +297,7 @@ function App() {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [faviconPreviewUrl, setFaviconPreviewUrl] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<Product[] | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState("");
@@ -499,17 +501,40 @@ function App() {
     }
   }, [loading, pathname, isAdminRoute, isOrdersRoute, user, navigate]);
 
-  const filteredProducts = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
+  useEffect(() => {
+    const query = search.trim();
 
-    if (!query) return products;
+    if (!query) {
+      setSearchResults(null);
+      return;
+    }
 
-    return products.filter(
-      (product) =>
-        product.name.toLocaleLowerCase().includes(query) ||
-        (product.description ?? "").toLocaleLowerCase().includes(query),
-    );
-  }, [products, search]);
+    let active = true;
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const results = await getProducts(query);
+        if (active) setSearchResults(results);
+      } catch (err) {
+        if (active) {
+          setSearchResults([]);
+          setError(
+            err instanceof Error ? err.message : "Unable to search products.",
+          );
+        }
+      }
+    }, 300);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [search]);
+
+  const filteredProducts = useMemo(
+    () => (search.trim() ? searchResults ?? products : products),
+    [products, search, searchResults],
+  );
 
   const selectedProduct = products.find(
     (product) => pathname === `/products/${encodeURIComponent(product.id)}`,
@@ -652,19 +677,30 @@ function App() {
     }
   }
 
-  function startEditing(product: Product) {
-    setForm({
-      name: product.name,
-      description: product.description ?? "",
-      price: product.price,
-      quantityOnHand: product.quantityOnHand,
-      tags: [],
-    });
-    setEditingId(product.id);
-    setPendingProductImageFile(null);
-    setProductImagePreviewUrl(null);
+  async function startEditing(product: Product) {
     setError("");
-    navigate("/admin");
+
+    try {
+      const tags = await getProductTags(product.id);
+
+      setForm({
+        name: product.name,
+        description: product.description ?? "",
+        price: product.price,
+        quantityOnHand: product.quantityOnHand,
+        tags,
+      });
+      setEditingId(product.id);
+      setPendingProductImageFile(null);
+      setProductImagePreviewUrl(null);
+      navigate("/admin");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load this product's search tags.",
+      );
+    }
   }
 
   function handleSelectProductImage(file: File | undefined) {
@@ -2060,11 +2096,7 @@ function App() {
                 <input
                   id="product-tags"
                   type="text"
-<<<<<<< HEAD
                   value={form.tags.join(",")}
-=======
-                  value={form.tags.join(", ")}
->>>>>>> 7255d196c968d4b1bbaa698460f9b1c1bbf14320
                   onChange={(event) =>
                     setForm({ ...form, tags: event.target.value.split(",") })
                   }
