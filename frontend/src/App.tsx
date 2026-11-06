@@ -1,233 +1,38 @@
-import type { FormEvent } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  createCheckoutSession,
-  getCheckoutSession,
-  getShippingRates,
-  createProduct,
-  deleteProduct,
-  getCurrentUser,
-  getProducts,
-  getProductTags,
-  getProductImageUrl,
-  uploadProductImage,
-  getOrders,
-  getAdminProducts,
-  setProductVisibility,
-  getAdminOrders,
-  setOrderArchived,
-  updateOrderShipmentTracking,
-  login,
-  register,
-  logout,
-  updateProduct,
-  type Product,
-  type ProductInput,
-  type CustomerOrder,
-  type AdminOrder,
-  type OrderShipment,
-  type User,
-  getSiteSettings,
-  updateSiteSettings,
-  uploadSiteLogo,
-  deleteSiteLogo,
-  uploadSiteFavicon,
-  deleteSiteFavicon,
-  type SiteSettings,
-  type ShippingDestination,
-  type ShippingRate,
-} from "./api";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import type { Product, SiteSettings } from "./api";
 import "./App.css";
-
-const emptyProduct: ProductInput = {
-  name: "",
-  description: "",
-  price: 0,
-  quantityOnHand: 0,
-  tags: [],
-};
+import AdminPage from "./components/AdminPage";
+import CartDrawer from "./components/CartDrawer";
+import CartItems from "./components/CartItems";
+import CheckoutStatus from "./components/CheckoutStatus";
+import CheckoutSummary from "./components/CheckoutSummary";
+import CustomerOrderList from "./components/CustomerOrderList";
+import LoginDialog from "./components/LoginDialog";
+import ProductCatalog from "./components/ProductCatalog";
+import ProductDetail from "./components/ProductDetail";
+import SiteFooter from "./components/SiteFooter";
+import SiteHeader from "./components/SiteHeader";
+import { useAuthentication } from "./hooks/useAuthentication";
+import useCart from "./hooks/useCart";
+import { useCheckout } from "./hooks/useCheckout";
+import { useStorefrontData } from "./hooks/useStorefrontData";
 
 const defaultSiteSettings: SiteSettings = {
   pageTitle: "Ledger",
   headerText: "Ledger",
   heroTitle: "Find something\nworth keeping.",
-  heroDescription: "Browse our collection and find just what you’re looking for.",
+  heroDescription:
+    "Browse our collection and find just what you’re looking for.",
   footerText: "Thoughtfully managed. Simply shopped.",
   logoUrl: null,
   faviconUrl: null,
 };
 
-
-
-
-
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
 });
-
-type CartItem = {
-  productId: string;
-  quantity: number;
-};
-
-const CART_STORAGE_KEY = "ledger-cart";
-
-function withImageCacheBust(settings: SiteSettings): SiteSettings {
-  const version = Date.now();
-  const bust = (url: string | null) =>
-    url ? `${url}${url.includes("?") ? "&" : "?"}v=${version}` : null;
-
-  return {
-    ...settings,
-    logoUrl: bust(settings.logoUrl),
-    faviconUrl: bust(settings.faviconUrl),
-  };
-}
-
-
-type AdminShipmentTrackingFormProps = {
-  orderId: string;
-  shipment: OrderShipment;
-  onSaved: () => void | Promise<void>;
-};
-
-function AdminShipmentTrackingForm({
-  orderId,
-  shipment,
-  onSaved,
-}: AdminShipmentTrackingFormProps) {
-  const [trackingNumber, setTrackingNumber] = useState(
-    shipment.trackingNumber ?? "",
-  );
-  const [trackingUrl, setTrackingUrl] = useState(
-    shipment.trackingUrl ?? "",
-  );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    setTrackingNumber(shipment.trackingNumber ?? "");
-    setTrackingUrl(shipment.trackingUrl ?? "");
-  }, [shipment.trackingNumber, shipment.trackingUrl]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      await updateOrderShipmentTracking(
-        orderId,
-        shipment.parcelNumber,
-        trackingNumber.trim() || null,
-        trackingUrl.trim() || null,
-      );
-      setMessage("Tracking information saved.");
-      await onSaved();
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not save tracking information.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleClear() {
-    setSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      await updateOrderShipmentTracking(
-        orderId,
-        shipment.parcelNumber,
-        null,
-        null,
-      );
-      setTrackingNumber("");
-      setTrackingUrl("");
-      setMessage("Tracking information cleared.");
-      await onSaved();
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not clear tracking information.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form className="shipment-tracking-form" onSubmit={handleSubmit}>
-      <h5>Parcel {shipment.parcelNumber} tracking</h5>
-      {shipment.carrier && (
-        <p className="muted">
-          {shipment.carrier}
-          {shipment.serviceName ? ` · ${shipment.serviceName}` : ""}
-        </p>
-      )}
-
-      <div className="field">
-        <label htmlFor={`tracking-number-${orderId}-${shipment.parcelNumber}`}>
-          Tracking number
-        </label>
-        <input
-          id={`tracking-number-${orderId}-${shipment.parcelNumber}`}
-          value={trackingNumber}
-          onChange={event => setTrackingNumber(event.target.value)}
-          maxLength={100}
-          placeholder="Enter tracking number"
-        />
-      </div>
-
-      <div className="field">
-        <label htmlFor={`tracking-url-${orderId}-${shipment.parcelNumber}`}>
-          Tracking URL (optional)
-        </label>
-        <input
-          id={`tracking-url-${orderId}-${shipment.parcelNumber}`}
-          type="url"
-          value={trackingUrl}
-          onChange={event => setTrackingUrl(event.target.value)}
-          maxLength={500}
-          placeholder="https://..."
-        />
-      </div>
-
-      <div className="shipment-tracking-actions">
-        <button
-          type="submit"
-          className="button button-primary"
-          disabled={saving || !trackingNumber.trim()}
-        >
-          {saving ? "Saving…" : shipment.trackingNumber ? "Update tracking" : "Save tracking"}
-        </button>
-        {shipment.trackingNumber && (
-          <button
-            type="button"
-            className="button button-secondary"
-            onClick={() => void handleClear()}
-            disabled={saving}
-          >
-            Clear tracking
-          </button>
-        )}
-      </div>
-
-      {error && <p className="error-message" role="alert">{error}</p>}
-      {message && <p className="muted" role="status">{message}</p>}
-    </form>
-  );
-}
 
 function App() {
   const { pathname, search: locationSearch } = useLocation();
@@ -241,339 +46,82 @@ function App() {
   const isCheckoutSuccessRoute = pathname === "/checkout/success";
   const isCheckoutCancelRoute = pathname === "/checkout/cancel";
   const isCheckoutRoute = isCheckoutSuccessRoute || isCheckoutCancelRoute;
-  const checkoutSessionId = new URLSearchParams(locationSearch).get("session_id");
+  const checkoutSessionId = new URLSearchParams(locationSearch).get(
+    "session_id",
+  );
   const isProductRoute =
     pathname.startsWith("/products/") && pathname.split("/").length === 3;
-
-  const [user, setUser] = useState<User | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [orders, setOrders] = useState<CustomerOrder[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [ordersError, setOrdersError] = useState("");
-  const [adminProducts, setAdminProducts] = useState<Product[]>([]);
-  const [adminProductsLoading, setAdminProductsLoading] = useState(false);
-  const [adminProductsError, setAdminProductsError] = useState("");
-  const [adminProductsTotalCount, setAdminProductsTotalCount] = useState(0);
-  const [adminProductsTotalPages, setAdminProductsTotalPages] = useState(0);
-  const [adminProductSearch, setAdminProductSearch] = useState("");
-  const [adminProductVisibility, setAdminProductVisibility] =
-    useState<"active" | "hidden" | "all">("active");
-  const [adminProductPage, setAdminProductPage] = useState(1);
-
-  const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
-  const [adminOrdersLoading, setAdminOrdersLoading] = useState(false);
-  const [adminOrdersError, setAdminOrdersError] = useState("");
-  const [adminOrdersTotalCount, setAdminOrdersTotalCount] = useState(0);
-  const [adminOrdersTotalPages, setAdminOrdersTotalPages] = useState(0);
-  const [adminOrderSearch, setAdminOrderSearch] = useState("");
-  const [adminOrderArchive, setAdminOrderArchive] =
-    useState<"active" | "archived" | "all">("active");
-  const [adminOrderPage, setAdminOrderPage] = useState(1);
-  const [adminActionId, setAdminActionId] = useState<string | null>(null);
-  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(CART_STORAGE_KEY);
-      if (!saved) return [];
-
-      const parsed: unknown = JSON.parse(saved);
-      if (!Array.isArray(parsed)) return [];
-
-      return parsed.filter(
-        (item): item is CartItem =>
-          typeof item?.productId === "string" &&
-          Number.isInteger(item?.quantity) &&
-          item.quantity > 0,
-      );
-    } catch {
-      return [];
-    }
-  });
-  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
-  const cartDrawerRef = useRef<HTMLElement>(null);
-  const cartTriggerRef = useRef<HTMLButtonElement>(null);
-
-  const [shippingDestination, setShippingDestination] =
-    useState<ShippingDestination>({
-      name: "",
-      street1: "",
-      street2: "",
-      city: "",
-      state: "",
-      postalCode: "",
-      country: "US",
-    });
-  const [shippingRates, setShippingRates] =
-    useState<ShippingRate[] | null>(null);
-  const [selectedShippingServiceToken, setSelectedShippingServiceToken] =
-    useState("");
-  const [shippingLoading, setShippingLoading] = useState(false);
-  const [shippingError, setShippingError] = useState("");
 
   const [detailQuantityState, setDetailQuantityState] = useState({
     pathname,
     quantity: "1",
   });
   const detailQuantity =
-    detailQuantityState.pathname === pathname ? detailQuantityState.quantity : "1";
+    detailQuantityState.pathname === pathname
+      ? detailQuantityState.quantity
+      : "1";
   const setDetailQuantity = (quantity: string) =>
     setDetailQuantityState({ pathname, quantity });
-  const [siteSettings, setSiteSettings] = useState<SiteSettings>(defaultSiteSettings);
-  const [siteSettingsForm, setSiteSettingsForm] = useState<SiteSettings>(defaultSiteSettings);
-  const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null);
-  const [pendingFaviconFile, setPendingFaviconFile] = useState<File | null>(null);
-  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
-  const [faviconPreviewUrl, setFaviconPreviewUrl] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [searchResults, setSearchResults] = useState<Product[] | null>(null);
-  const [loginOpen, setLoginOpen] = useState(false);
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [form, setForm] = useState<ProductInput>(emptyProduct);
-  const [priceDraft, setPriceDraft] = useState("0");
-  const [quantityDraft, setQuantityDraft] = useState("0");
-  const [cartQuantityDrafts, setCartQuantityDrafts] =
-    useState<Record<string, string>>({});
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [pendingProductImageFile, setPendingProductImageFile] =
-    useState<File | null>(null);
-  const [productImagePreviewUrl, setProductImagePreviewUrl] =
-    useState<string | null>(null);
+  const [siteSettings, setSiteSettings] =
+    useState<SiteSettings>(defaultSiteSettings);
   const [productImageVersion, setProductImageVersion] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+
+  const [cartQuantityDrafts, setCartQuantityDrafts] = useState<
+    Record<string, string>
+  >({});
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [checkoutResult, setCheckoutResult] = useState<{
-    sessionId: string;
-    orderId?: string;
-    status?: string;
-    error?: string;
-  } | null>(null);
-  const checkoutStatus =
-    checkoutResult?.sessionId === checkoutSessionId
-      ? checkoutResult.status ?? null
-      : null;
-  const checkoutStatusError =
-    checkoutResult?.sessionId === checkoutSessionId
-      ? checkoutResult.error ?? ""
-      : "";
 
-  useEffect(() => {
-    return () => {
-      if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
-      if (faviconPreviewUrl) URL.revokeObjectURL(faviconPreviewUrl);
-      if (productImagePreviewUrl) URL.revokeObjectURL(productImagePreviewUrl);
-    };
-  }, [logoPreviewUrl, faviconPreviewUrl, productImagePreviewUrl]);
+  const cart = useCart();
+  const {
+    setCartItems,
+    cartDrawerOpen,
+    setCartDrawerOpen,
+    cartDrawerRef,
+    cartTriggerRef,
+    cartItemCount,
+  } = cart;
 
-  useEffect(() => {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
-    setShippingRates(null);
-    setSelectedShippingServiceToken("");
-    setShippingError("");
-  }, [cartItems]);
+  const {
+    user,
+    setUser,
+    products,
+    setProducts,
+    orders,
+    ordersLoading,
+    ordersError,
+    loading,
+    searchResults,
+    loadProducts,
+    loadOrders,
+  } = useStorefrontData({
+    isOrdersRoute,
+    search,
+    setSiteSettings,
+    setError,
+  });
 
-  useEffect(() => {
-    if (!isCheckoutSuccessRoute || !checkoutSessionId) return;
-
-    const sessionId = checkoutSessionId;
-
-    let active = true;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    let attempts = 0;
-    const maxAttempts = 20;
-    const pollIntervalMs = 1500;
-
-    async function checkStatus() {
-      try {
-        const result = await getCheckoutSession(sessionId);
-        if (!active) return;
-
-        setCheckoutResult({
-          sessionId,
-          orderId: result.orderId,
-          status: result.status,
-        });
-
-        if (result.status === "Paid") {
-          setCartItems([]);
-        }
-
-        if (result.status === "Pending" && attempts < maxAttempts) {
-          attempts += 1;
-          timeoutId = setTimeout(() => {
-            void checkStatus();
-          }, pollIntervalMs);
-        }
-      } catch (err: unknown) {
-        if (!active) return;
-
-        setCheckoutResult({
-          sessionId,
-          error:
-            err instanceof Error
-              ? err.message
-              : "Could not check payment status.",
-        });
-      }
-    }
-
-    void checkStatus();
-
-    return () => {
-      active = false;
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
-    };
-  }, [isCheckoutSuccessRoute, checkoutSessionId]);
-
-  const loadProducts = useCallback(async () => {
-    const items = await getProducts();
-    setProducts(items);
-  }, []);
-
-  const loadOrders = useCallback(async () => {
-    setOrdersLoading(true);
-    setOrdersError("");
-    try {
-      setOrders(await getOrders());
-    } catch (err) {
-      setOrdersError(
-        err instanceof Error ? err.message : "Unable to load your orders.",
-      );
-    } finally {
-      setOrdersLoading(false);
-    }
-  }, []);
-
-  const loadAdminProducts = useCallback(async () => {
-    setAdminProductsLoading(true);
-    setAdminProductsError("");
-    try {
-      const result = await getAdminProducts({
-        search: adminProductSearch,
-        visibility: adminProductVisibility,
-        page: adminProductPage,
-        pageSize: 10,
-      });
-      setAdminProducts(result.items);
-      setAdminProductsTotalCount(result.totalCount);
-      setAdminProductsTotalPages(result.totalPages);
-    } catch (err) {
-      setAdminProductsError(
-        err instanceof Error ? err.message : "Unable to load products.",
-      );
-    } finally {
-      setAdminProductsLoading(false);
-    }
-  }, [adminProductSearch, adminProductVisibility, adminProductPage]);
-
-  const loadAdminOrders = useCallback(async () => {
-    setAdminOrdersLoading(true);
-    setAdminOrdersError("");
-    try {
-      const result = await getAdminOrders({
-        search: adminOrderSearch,
-        archive: adminOrderArchive,
-        page: adminOrderPage,
-        pageSize: 10,
-      });
-      setAdminOrders(result.items);
-      setAdminOrdersTotalCount(result.totalCount);
-      setAdminOrdersTotalPages(result.totalPages);
-    } catch (err) {
-      setAdminOrdersError(
-        err instanceof Error ? err.message : "Unable to load all orders.",
-      );
-    } finally {
-      setAdminOrdersLoading(false);
-    }
-  }, [adminOrderSearch, adminOrderArchive, adminOrderPage]);
-
-  async function handleSetProductVisibility(product: Product) {
-    const nextIsActive = !product.isActive;
-    setAdminActionId(product.id);
-    setAdminProductsError("");
-    try {
-      await setProductVisibility(product.id, nextIsActive);
-      await Promise.all([loadAdminProducts(), loadProducts()]);
-    } catch (err) {
-      setAdminProductsError(
-        err instanceof Error ? err.message : "Unable to update product visibility.",
-      );
-    } finally {
-      setAdminActionId(null);
-    }
-  }
-
-  async function handleSetOrderArchived(order: AdminOrder) {
-    setAdminActionId(order.id);
-    setAdminOrdersError("");
-    try {
-      await setOrderArchived(order.id, !order.isArchived);
-      await loadAdminOrders();
-    } catch (err) {
-      setAdminOrdersError(
-        err instanceof Error ? err.message : "Unable to update order archive status.",
-      );
-    } finally {
-      setAdminActionId(null);
-    }
-  }
-
-  useEffect(() => {
-    if (!loading && isOrdersRoute && user) {
-      void Promise.resolve().then(() => loadOrders());
-    }
-  }, [loading, isOrdersRoute, user, loadOrders]);
-
-  useEffect(() => {
-    if (!loading && isAdminProductsRoute && user?.isAdmin) {
-      void Promise.resolve().then(() => loadAdminProducts());
-    }
-  }, [loading, isAdminProductsRoute, user, loadAdminProducts]);
-
-  useEffect(() => {
-    if (loading || !isAdminOrdersRoute || !user?.isAdmin) return;
-
-    const timeoutId = window.setTimeout(() => {
-      void loadAdminOrders();
-    }, 300);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [loading, isAdminOrdersRoute, user, loadAdminOrders]);
-
-  useEffect(() => {
-    let active = true;
-
-    async function initialize() {
-      try {
-        const [currentUser, items, settings] = await Promise.all([
-          getCurrentUser(),
-          getProducts(),
-          getSiteSettings(),
-        ]);
-
-        if (!active) return;
-
-        setUser(currentUser);
-        setProducts(items);
-        setSiteSettings(settings);
-        setSiteSettingsForm(settings);
-      } catch {
-        if (active) {
-          setError("Unable to load the store. Please check that the API is running and try again.");
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    void initialize();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  const {
+    loginOpen,
+    setLoginOpen,
+    isRegistering,
+    setIsRegistering,
+    email,
+    setEmail,
+    password,
+    setPassword,
+    handleLogin,
+    handleRegister,
+    handleLogout,
+  } = useAuthentication({
+    setUser,
+    setError,
+    setSubmitting,
+    loadProducts,
+    navigateToAdmin: () => navigate("/admin/products", { replace: true }),
+  });
 
   useEffect(() => {
     document.title = siteSettings.pageTitle || "Ledger";
@@ -614,38 +162,8 @@ function App() {
     }
   }, [loading, pathname, isAdminRoute, isOrdersRoute, user, navigate]);
 
-  useEffect(() => {
-    const query = search.trim();
-
-    if (!query) {
-      setSearchResults(null);
-      return;
-    }
-
-    let active = true;
-
-    const timeoutId = window.setTimeout(async () => {
-      try {
-        const results = await getProducts(query);
-        if (active) setSearchResults(results);
-      } catch (err) {
-        if (active) {
-          setSearchResults([]);
-          setError(
-            err instanceof Error ? err.message : "Unable to search products.",
-          );
-        }
-      }
-    }, 300);
-
-    return () => {
-      active = false;
-      window.clearTimeout(timeoutId);
-    };
-  }, [search]);
-
   const filteredProducts = useMemo(
-    () => (search.trim() ? searchResults ?? products : products),
+    () => (search.trim() ? (searchResults ?? products) : products),
     [products, search, searchResults],
   );
 
@@ -653,73 +171,34 @@ function App() {
     (product) => pathname === `/products/${encodeURIComponent(product.id)}`,
   );
 
-  const editingProduct = products.find(
-    (product) => product.id === editingId,
-  );
-
-  const cartProductItems = cartItems.flatMap((item) => {
-    const product = products.find((candidate) => candidate.id === item.productId);
-    return product ? [{ ...item, product }] : [];
-  });
-
-  const cartItemCount = cartItems.reduce((total, item) => total + item.quantity, 0);
+  const cartProductItems = cart.getCartProductItems(products);
   const cartSubtotal = cartProductItems.reduce(
     (total, item) => total + item.product.price * item.quantity,
     0,
   );
 
-  useEffect(() => {
-    if (!cartDrawerOpen) return;
-
-    const previousActiveElement =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    const previousOverflow = document.body.style.overflow;
-
-    document.body.style.overflow = "hidden";
-    cartDrawerRef.current?.focus();
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setCartDrawerOpen(false);
-        return;
-      }
-
-      if (event.key !== "Tab" || !cartDrawerRef.current) return;
-
-      const focusable = Array.from(
-        cartDrawerRef.current.querySelectorAll<HTMLElement>(
-          'a[href], button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((element) => element.getAttribute("aria-hidden") !== "true");
-
-      if (focusable.length === 0) {
-        event.preventDefault();
-        cartDrawerRef.current.focus();
-        return;
-      }
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousActiveElement?.focus();
-    };
-  }, [cartDrawerOpen]);
+  const {
+    shippingDestination,
+    setShippingDestination,
+    shippingRates,
+    selectedShippingServiceToken,
+    setSelectedShippingServiceToken,
+    shippingLoading,
+    shippingError,
+    checkoutResult,
+    checkoutStatus,
+    checkoutStatusError,
+    resetShippingSelection,
+    handleGetShippingRates,
+    handleCheckout,
+  } = useCheckout({
+    isCheckoutSuccessRoute,
+    checkoutSessionId,
+    items: cartProductItems,
+    setCartItems,
+    setError,
+    setSubmitting,
+  });
 
   function addToCart(product: Product, quantity = 1) {
     if (!product.isActive || product.quantityOnHand <= 0) {
@@ -727,424 +206,14 @@ function App() {
       return;
     }
 
-    setCartItems((current) => {
-      const existing = current.find((item) => item.productId === product.id);
-      const nextQuantity = Math.min(
-        product.quantityOnHand,
-        (existing?.quantity ?? 0) + quantity,
-      );
-
-      if (existing) {
-        return current.map((item) =>
-          item.productId === product.id
-            ? { ...item, quantity: nextQuantity }
-            : item,
-        );
-      }
-
-      return [...current, { productId: product.id, quantity: nextQuantity }];
-    });
+    resetShippingSelection();
     setError("");
-    setCartDrawerOpen(true);
+    cart.addToCart(product, quantity);
   }
 
   function updateCartQuantity(product: Product, quantity: number) {
-    if (quantity <= 0) {
-      setCartItems((current) =>
-        current.filter((item) => item.productId !== product.id),
-      );
-      return;
-    }
-
-    setCartItems((current) =>
-      current.map((item) =>
-        item.productId === product.id
-          ? { ...item, quantity: Math.min(quantity, product.quantityOnHand) }
-          : item,
-      ),
-    );
-  }
-
-  function resetForm() {
-    setForm(emptyProduct);
-    setPriceDraft("0");
-    setQuantityDraft("0");
-    setEditingId(null);
-    setPendingProductImageFile(null);
-    setProductImagePreviewUrl(null);
-  }
-
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setSubmitting(true);
-
-    try {
-      await login(email, password);
-
-      const currentUser = await getCurrentUser();
-
-      if (!currentUser) {
-        throw new Error("Sign-in succeeded, but your session could not be verified.");
-      }
-
-      setUser(currentUser);
-      setPassword("");
-      setLoginOpen(false);
-
-      await loadProducts();
-      if (currentUser.isAdmin) {
-        navigate("/admin/products", { replace: true });
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to sign in.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleRegister(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setSubmitting(true);
-
-    try {
-      await register(email, password);
-
-      const currentUser = await getCurrentUser();
-
-      if (!currentUser) {
-        throw new Error(
-          "Account created, but your sign-in session could not be verified.",
-        );
-      }
-
-      setUser(currentUser);
-      setPassword("");
-      setLoginOpen(false);
-      setIsRegistering(false);
-
-      await loadProducts();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to create your account.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleLogout() {
-    setError("");
-    setSubmitting(true);
-
-    try {
-      await logout();
-      setUser(null);
-      resetForm();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to sign out.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function startEditing(product: Product) {
-    setError("");
-
-    try {
-      const tags = await getProductTags(product.id);
-
-      setForm({
-        name: product.name,
-        description: product.description ?? "",
-        price: product.price,
-        quantityOnHand: product.quantityOnHand,
-        tags,
-      });
-      setPriceDraft(String(product.price));
-      setQuantityDraft(String(product.quantityOnHand));
-      setEditingId(product.id);
-      setPendingProductImageFile(null);
-      setProductImagePreviewUrl(null);
-      navigate("/admin/products");
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load this product's search tags.",
-      );
-    }
-  }
-
-  function handleSelectProductImage(file: File | undefined) {
-    if (!file) return;
-
-    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
-
-    if (!allowedTypes.includes(file.type)) {
-      setPendingProductImageFile(null);
-      setProductImagePreviewUrl(null);
-      setError("Choose a PNG, JPEG, or WebP product image.");
-      return;
-    }
-
-    if (file.size > 2 * 1024 * 1024) {
-      setPendingProductImageFile(null);
-      setProductImagePreviewUrl(null);
-      setError("Product images must be 2 MB or smaller.");
-      return;
-    }
-
-    setPendingProductImageFile(file);
-    setProductImagePreviewUrl(URL.createObjectURL(file));
-    setError("");
-  }
-
-  function handleSelectLogo(file: File | undefined) {
-    if (!file) return;
-    if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
-    setPendingLogoFile(file);
-    setLogoPreviewUrl(URL.createObjectURL(file));
-    setError("");
-  }
-
-  async function handleRemoveLogo() {
-    if (!window.confirm("Remove the store logo?")) return;
-    setError("");
-    setSubmitting(true);
-    try {
-      const saved = withImageCacheBust(await deleteSiteLogo());
-      setSiteSettings(saved);
-      setSiteSettingsForm(saved);
-      setPendingLogoFile(null);
-      setLogoPreviewUrl(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to remove logo.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  function handleSelectFavicon(file: File | undefined) {
-    if (!file) return;
-    if (faviconPreviewUrl) URL.revokeObjectURL(faviconPreviewUrl);
-    setPendingFaviconFile(file);
-    setFaviconPreviewUrl(URL.createObjectURL(file));
-    setError("");
-  }
-
-  async function handleRemoveFavicon() {
-    if (!window.confirm("Remove the favicon?")) return;
-    setError("");
-    setSubmitting(true);
-    try {
-      const saved = withImageCacheBust(await deleteSiteFavicon());
-      setSiteSettings(saved);
-      setSiteSettingsForm(saved);
-      setPendingFaviconFile(null);
-      setFaviconPreviewUrl(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to remove favicon.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleGetShippingRates(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setShippingError("");
-    setShippingRates(null);
-    setSelectedShippingServiceToken("");
-    setShippingLoading(true);
-
-    try {
-      const result = await getShippingRates(
-        cartProductItems.map(({ product, quantity }) => ({
-          productId: product.id,
-          quantity,
-        })),
-        shippingDestination,
-      );
-
-      setShippingRates(result.rates);
-      if (result.rates.length === 0) {
-        setShippingError(
-          "No USPS Ground Advantage or Priority Mail rates were found for this address.",
-        );
-      }
-    } catch (err) {
-      setShippingError(
-        err instanceof Error ? err.message : "Unable to retrieve shipping rates.",
-      );
-    } finally {
-      setShippingLoading(false);
-    }
-  }
-
-  async function handleCheckout() {
-    const selectedRate = shippingRates?.find(
-      (rate) => rate.serviceToken === selectedShippingServiceToken,
-    );
-
-    if (!selectedRate) {
-      setShippingError("Please retrieve and select a shipping rate first.");
-      return;
-    }
-
-    setError("");
-    setSubmitting(true);
-
-    try {
-      const session = await createCheckoutSession(
-        cartProductItems.map(({ product, quantity }) => ({
-          productId: product.id,
-          quantity,
-        })),
-        shippingDestination,
-        selectedRate.serviceToken,
-        selectedRate.rateIds,
-      );
-
-      window.location.assign(session.url);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to start checkout.");
-      setSubmitting(false);
-    }
-  }
-
-  async function handleSaveSiteSettings(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setSubmitting(true);
-    try {
-      let saved = withImageCacheBust(await updateSiteSettings(siteSettingsForm));
-      setSiteSettings(saved);
-      setSiteSettingsForm(saved);
-
-      if (pendingLogoFile) {
-        saved = withImageCacheBust(await uploadSiteLogo(pendingLogoFile));
-        setSiteSettings(saved);
-        setSiteSettingsForm(saved);
-        setPendingLogoFile(null);
-        setLogoPreviewUrl(null);
-      }
-
-      if (pendingFaviconFile) {
-        saved = withImageCacheBust(await uploadSiteFavicon(pendingFaviconFile));
-        setSiteSettings(saved);
-        setSiteSettingsForm(saved);
-        setPendingFaviconFile(null);
-        setFaviconPreviewUrl(null);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save storefront content.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleSaveProduct(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-
-    const price = Number(priceDraft);
-    const quantityOnHand = Number(quantityDraft);
-
-    if (
-      priceDraft.trim() === "" ||
-      !Number.isFinite(price) ||
-      price < 0 ||
-      price > 99999999.99
-    ) {
-      setError("Enter a valid price between 0 and 99,999,999.99.");
-      return;
-    }
-
-    if (
-      quantityDraft.trim() === "" ||
-      !Number.isInteger(quantityOnHand) ||
-      quantityOnHand < 0
-    ) {
-      setError("Enter a valid whole number for quantity on hand.");
-      return;
-    }
-
-    setSubmitting(true);
-
-    const input: ProductInput = {
-      name: form.name.trim(),
-      description: form.description.trim(),
-      price,
-      quantityOnHand,
-      tags: form.tags.map((tag) => tag.trim()).filter(Boolean),
-    };
-
-    let productSaved = false;
-
-    try {
-      const savedProduct = editingId
-        ? await updateProduct(editingId, input)
-        : await createProduct(input);
-
-      productSaved = true;
-
-      // Keep the newly created product ID if image upload fails.
-      setEditingId(savedProduct.id);
-
-      if (pendingProductImageFile) {
-        await uploadProductImage(
-          savedProduct.id,
-          pendingProductImageFile,
-        );
-        setProductImageVersion(Date.now());
-      }
-
-      await loadProducts();
-      if (isAdminProductsRoute) await loadAdminProducts();
-      resetForm();
-    } catch (err) {
-      if (productSaved) {
-        try {
-          await loadProducts();
-          if (isAdminProductsRoute) await loadAdminProducts();
-        } catch {
-          // Preserve the original save or upload error.
-        }
-
-        setError(
-          err instanceof Error
-            ? `Product details were saved, but the image upload failed: ${err.message}`
-            : "Product details were saved, but the image upload failed.",
-        );
-      } else {
-        setError(
-          err instanceof Error ? err.message : "Unable to save product.",
-        );
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleDeleteProduct(product: Product) {
-    if (!window.confirm(`Delete "${product.name}"?`)) return;
-
-    setError("");
-    setSubmitting(true);
-
-    try {
-      await deleteProduct(product.id);
-      setProducts((current) =>
-        current.filter((item) => item.id !== product.id),
-      );
-
-      if (editingId === product.id) resetForm();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to delete product.");
-    } finally {
-      setSubmitting(false);
-    }
+    resetShippingSelection();
+    cart.updateCartQuantity(product, quantity);
   }
 
   useEffect(() => {
@@ -1167,1733 +236,230 @@ function App() {
 
   return (
     <main className="storefront">
-      <header className="site-header">
-        <Link className="brand" to="/" aria-label={`${siteSettings.headerText} home`}>
-          {siteSettings.logoUrl ? (
-            <img className="brand-logo" src={siteSettings.logoUrl} alt="" />
-          ) : (
-            <span className="brand-mark" aria-hidden="true">
-              {siteSettings.pageTitle.trim().charAt(0).toLocaleUpperCase() || "L"}
-            </span>
-          )}
-          <span>{siteSettings.headerText}</span>
-        </Link>
-
-        <nav className="header-actions" aria-label="Account">
-          {!isAdminRoute && (
-            <button
-              ref={cartTriggerRef}
-              type="button"
-              className="cart-nav-link cart-trigger"
-              onClick={() => setCartDrawerOpen(true)}
-              aria-label={`Open shopping cart, ${cartItemCount} items`}
-              aria-haspopup="dialog"
-              aria-expanded={cartDrawerOpen}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M3 3h2l2.2 11.2a2 2 0 0 0 2 1.6h8.9a2 2 0 0 0 1.9-1.4L22 8H6" />
-                <circle cx="10" cy="20" r="1" />
-                <circle cx="18" cy="20" r="1" />
-              </svg>
-              <span>Cart</span>
-              <span className="cart-count-badge">{cartItemCount}</span>
-            </button>
-          )}
-          {user ? (
-            <>
-              <Link className="orders-nav-link" to="/orders">
-                Orders
-              </Link>
-              {user.isAdmin && (
-                <Link className="admin-nav-link" to="/admin">
-                  Admin
-                </Link>
-              )}
-              <span className="account-email">{user.email}</span>
-              <button
-                type="button"
-                className="button button-secondary"
-                onClick={() => void handleLogout()}
-                disabled={submitting}
-              >
-                Sign out
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="button button-primary"
-              onClick={() => {
-                setError("");
-                setLoginOpen(true);
-              }}
-            >
-              Sign in
-            </button>
-          )}
-        </nav>
-      </header>
+      <SiteHeader
+        siteSettings={siteSettings}
+        user={user}
+        isAdminRoute={isAdminRoute}
+        cartTriggerRef={cartTriggerRef}
+        cartItemCount={cartItemCount}
+        cartDrawerOpen={cartDrawerOpen}
+        setCartDrawerOpen={setCartDrawerOpen}
+        submitting={submitting}
+        onLogout={() => void handleLogout()}
+        onSignIn={() => {
+          setError("");
+          setLoginOpen(true);
+        }}
+      />
 
       {!isAdminRoute && (
         <>
-      {(isCheckoutSuccessRoute || isCheckoutCancelRoute) && (
-        <section className="cart-section">
-          <div className="cart-heading">
-            <p className="eyebrow">CHECKOUT</p>
-            <h1>{isCheckoutSuccessRoute ? "Order status" : "Checkout cancelled"}</h1>
-          </div>
-
-          {isCheckoutCancelRoute ? (
-            <div className="empty-state">
-              <h2>Your order has not been completed</h2>
-              <p>Your cart is still saved. You can return to it whenever you are ready.</p>
-              <Link className="button button-primary" to="/cart">Return to cart</Link>
-            </div>
-          ) : (
-            <div className="empty-state">
-              {!checkoutSessionId ? (
-                <>
-                  <h2>Unable to verify payment</h2>
-                  <p role="alert" className="error-message">
-                    The checkout session ID is missing.
-                  </p>
-                </>
-              ) : checkoutStatusError ? (
-                <>
-                  <h2>Unable to verify payment</h2>
-                  <p role="alert" className="error-message">{checkoutStatusError}</p>
-                  <p>Please do not submit another payment until you have checked your order status.</p>
-                </>
-              ) : checkoutStatus === "Paid" ? (
-                <>
-                  <h2>Payment confirmed</h2>
-                  <p>Thank you. Your payment has been confirmed and your order is recorded.</p>
-                  <p>
-                    Keep an eye on your email for your USPS tracking number once your order ships.
-                    If you don't see the email, please check your spam folder.
-                  </p>
-                  {checkoutResult?.orderId && (
-                    <p>
-                      <strong>Order number:</strong>{" "}
-                      {checkoutResult.orderId}
-                    </p>
-                  )}
-                  <div className="checkout-success-actions">
-                    <Link className="button button-primary" to="/orders">
-                      View my orders
-                    </Link>
-                    <Link className="button button-secondary" to="/">
-                      Continue shopping
-                    </Link>
-                  </div>
-                </>
-              ) : checkoutStatus === "PaidInventoryIssue" ? (
-                <>
-                  <h2>Payment received; order needs review</h2>
-                  <p>Your payment was received, but inventory needs manual review. Please contact the store before placing another order.</p>
-                </>
-              ) : checkoutStatus === "Cancelled" ? (
-                <>
-                  <h2>This checkout session expired</h2>
-                  <p>Your cart has been preserved. Start checkout again when you are ready.</p>
-                  <Link className="button button-primary" to="/cart">Return to cart</Link>
-                </>
-              ) : (
-                <>
-                  <h2>{checkoutStatus === "Pending" || checkoutStatus === "CheckoutFailed" ? "Payment not yet confirmed" : "Checking your payment…"}</h2>
-                  <p>Ledger confirms payment through a secure server-side notification. This page alone does not confirm payment.</p>
-                  <button type="button" className="button button-secondary" onClick={() => window.location.reload()}>Check status again</button>
-                  <Link className="continue-shopping-link" to="/">Continue shopping</Link>
-                </>
-              )}
-            </div>
-          )}
-        </section>
-      )}
-
-      {!isProductRoute && !isCartRoute && !isCheckoutRoute && !isOrdersRoute && (
-      <section className="store-hero" id="home">
-        <div className="hero-content">
-          <p className="eyebrow">{siteSettings.headerText.toLocaleUpperCase()}</p>
-          <h1>{siteSettings.heroTitle.split("\n").map((line, index) => (
-            <span key={index}>{index > 0 && <br />}{line}</span>
-          ))}</h1>
-          <p className="hero-description">
-            {siteSettings.heroDescription}
-          </p>
-
-          <a className="button button-light" href="#products">
-            Explore the store <span aria-hidden="true">↓</span>
-          </a>
-        </div>
-        <div className="hero-decoration" aria-hidden="true">
-          <div className="hero-circle hero-circle-one" />
-          <div className="hero-circle hero-circle-two" />
-          <div className="hero-letter">
-            {siteSettings.headerText.trim().charAt(0).toLocaleUpperCase() || "L"}
-          </div>
-        </div>
-      </section>
-      )}
-
-      {!isProductRoute && !isCartRoute && !isCheckoutRoute && !isOrdersRoute && (
-      <section className="catalog-section" id="products">
-        <div className="catalog-heading">
-          <div>
-            <p className="eyebrow">OUR COLLECTION</p>
-            <h2>Shop all products</h2>
-            <p className="muted">
-              {filteredProducts.length}{" "}
-              {filteredProducts.length === 1 ? "item" : "items"} to explore
-            </p>
-          </div>
-
-          <div className="search-wrapper">
-            <label className="visually-hidden" htmlFor="product-search">
-              Search products
-            </label>
-            <span className="search-icon" aria-hidden="true">⌕</span>
-            <input
-              id="product-search"
-              type="search"
-              placeholder="Search products..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
+          {(isCheckoutSuccessRoute || isCheckoutCancelRoute) && (
+            <CheckoutStatus
+              isCheckoutSuccessRoute={isCheckoutSuccessRoute}
+              isCheckoutCancelRoute={isCheckoutCancelRoute}
+              checkoutSessionId={checkoutSessionId}
+              checkoutStatus={checkoutStatus}
+              checkoutStatusError={checkoutStatusError}
+              orderId={checkoutResult?.orderId}
             />
-          </div>
-        </div>
+          )}
 
-        {error && !loginOpen && (
-          <p className="error-message" role="alert">{error}</p>
-        )}
-
-        {products.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-icon" aria-hidden="true">◇</span>
-            <h3>The shelves are empty for now</h3>
-            <p>Check back soon for new products.</p>
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-icon" aria-hidden="true">⌕</span>
-            <h3>No matching products</h3>
-            <p>Try a different search term.</p>
-            <button
-              type="button"
-              className="button button-secondary"
-              onClick={() => setSearch("")}
-            >
-              Clear search
-            </button>
-          </div>
-        ) : (
-          <div className="product-grid">
-            {filteredProducts.map((product) => (
-              <article className="product-card" key={product.id}>
-                <Link
-                  className="product-art product-art-link"
-                  to={`/products/${encodeURIComponent(product.id)}`}
-                  aria-label={`View ${product.name}`}
-                >
-                  {product.hasImage ? (
-                    <img
-                      src={getProductImageUrl(product.id, productImageVersion)}
-                      alt={product.name}
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  ) : (
-                    <span className="product-art-letter">
-                      {product.name.trim().charAt(0).toLocaleUpperCase()}
-                    </span>
-                  )}
-                  <span className="product-art-index">
-                    {String(products.indexOf(product) + 1).padStart(2, "0")}
-                  </span>
-                </Link>
-
-                <div className="product-card-body">
-                  <div className="product-card-heading">
-                    <h3>
-                      <Link
-                        className="product-title-link"
-                        to={`/products/${encodeURIComponent(product.id)}`}
-                      >
-                        {product.name}
-                      </Link>
-                    </h3>
-                    <strong className="product-price">
-                      {currency.format(product.price)}
-                    </strong>
-                  </div>
-
-                  <p className="product-description">
-                    {product.description || "Discover the details of this item."}
+          {!isProductRoute &&
+            !isCartRoute &&
+            !isCheckoutRoute &&
+            !isOrdersRoute && (
+              <section className="store-hero" id="home">
+                <div className="hero-content">
+                  <p className="eyebrow">
+                    {siteSettings.headerText.toLocaleUpperCase()}
+                  </p>
+                  <h1>
+                    {siteSettings.heroTitle.split("\n").map((line, index) => (
+                      <span key={index}>
+                        {index > 0 && <br />}
+                        {line}
+                      </span>
+                    ))}
+                  </h1>
+                  <p className="hero-description">
+                    {siteSettings.heroDescription}
                   </p>
 
-                  <div className="product-card-footer">
-                    <span
-                      className={
-                        product.quantityOnHand > 0
-                          ? "stock-status"
-                          : "stock-status stock-unavailable"
-                      }
-                    >
-                      <span className="stock-dot" aria-hidden="true" />
-                      {product.quantityOnHand > 0
-                        ? "In stock"
-                        : "Out of stock"}
-                    </span>
-
-                    {user?.isAdmin && (
-                      <div className="product-admin-actions">
-                        <button
-                          type="button"
-                          className="text-button"
-                          onClick={() => startEditing(product)}
-                          disabled={submitting}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="text-button text-button-danger"
-                          onClick={() => void handleDeleteProduct(product)}
-                          disabled={submitting}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
+                  <a className="button button-light" href="#products">
+                    Explore the store <span aria-hidden="true">↓</span>
+                  </a>
+                </div>
+                <div className="hero-decoration" aria-hidden="true">
+                  <div className="hero-circle hero-circle-one" />
+                  <div className="hero-circle hero-circle-two" />
+                  <div className="hero-letter">
+                    {siteSettings.headerText
+                      .trim()
+                      .charAt(0)
+                      .toLocaleUpperCase() || "L"}
                   </div>
                 </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-      )}
-
-      {isProductRoute && (
-        <section className="detail-section">
-          {selectedProduct ? (
-            <div className="product-detail">
-              <div className="product-detail-art">
-                {selectedProduct.hasImage ? (
-                  <img
-                    src={getProductImageUrl(
-                      selectedProduct.id,
-                      productImageVersion,
-                    )}
-                    alt={selectedProduct.name}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                  />
-                ) : (
-                  <span aria-hidden="true">
-                    {selectedProduct.name.trim().charAt(0).toLocaleUpperCase()}
-                  </span>
-                )}
-              </div>
-
-              <div className="product-detail-content">
-                <Link className="back-link" to="/">
-                  ← Back to all products
-                </Link>
-                <p className="eyebrow">PRODUCT DETAILS</p>
-                <h1>{selectedProduct.name}</h1>
-                <p className="detail-price">
-                  {currency.format(selectedProduct.price)}
-                </p>
-                <p className="detail-description">
-                  {selectedProduct.description || "Discover the details of this item."}
-                </p>
-                <p className={
-                  selectedProduct.quantityOnHand > 0
-                    ? "stock-status"
-                    : "stock-status stock-unavailable"
-                }>
-                  <span className="stock-dot" aria-hidden="true" />
-                  {selectedProduct.quantityOnHand > 0
-                    ? `${selectedProduct.quantityOnHand} available`
-                    : "Out of stock"}
-                </p>
-
-                {selectedProduct.quantityOnHand > 0 && (
-                  <div className="detail-purchase">
-                    <label htmlFor="detail-quantity">Quantity</label>
-                    <input
-                      id="detail-quantity"
-                      type="number"
-                      min={1}
-                      max={selectedProduct.quantityOnHand}
-                      step={1}
-                      value={detailQuantity}
-                      onChange={(event) => setDetailQuantity(event.target.value)}
-                      onBlur={() => {
-                        const value = Number(detailQuantity);
-                        const normalized =
-                          Number.isInteger(value) && value > 0
-                            ? Math.min(value, selectedProduct.quantityOnHand)
-                            : 1;
-                        setDetailQuantity(String(normalized));
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="button button-primary"
-                      onClick={() => {
-                        const value = Number(detailQuantity);
-                        const quantity =
-                          Number.isInteger(value) && value > 0
-                            ? Math.min(value, selectedProduct.quantityOnHand)
-                            : 1;
-                        addToCart(selectedProduct, quantity);
-                        setDetailQuantity(String(quantity));
-                      }}
-                    >
-                      Add to cart
-                    </button>
-                  </div>
-                )}
-                {error && <p className="error-message" role="alert">{error}</p>}
-                <button
-                  type="button"
-                  className="continue-shopping-link detail-cart-link"
-                  onClick={() => setCartDrawerOpen(true)}
-                >
-                  View cart ({cartItemCount})
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="empty-state">
-              <h1>Product not found</h1>
-              <p>This product may have been removed or is no longer available.</p>
-              <Link className="button button-primary" to="/">
-                Browse products
-              </Link>
-            </div>
-          )}
-        </section>
-      )}
-
-      {isCartRoute && (
-        <section className="cart-section">
-          <div className="cart-heading">
-            <p className="eyebrow">YOUR SELECTION</p>
-            <h1>Shopping cart</h1>
-          </div>
-
-          {cartProductItems.length === 0 ? (
-            <div className="empty-state">
-              <span className="empty-icon" aria-hidden="true">◇</span>
-              <h2>Your cart is empty</h2>
-              <p>Find something worth keeping.</p>
-              <Link className="button button-primary" to="/">
-                Browse products
-              </Link>
-            </div>
-          ) : (
-            <div className="cart-layout">
-              <div className="cart-items">
-                {cartProductItems.map(({ product, quantity }) => (
-                  <article className="cart-item" key={product.id}>
-                    <div className="cart-item-art" aria-hidden="true">
-                      {product.name.trim().charAt(0).toLocaleUpperCase()}
-                    </div>
-                    <div className="cart-item-info">
-                      <Link
-                        className="product-title-link"
-                        to={`/products/${encodeURIComponent(product.id)}`}
-                      >
-                        {product.name}
-                      </Link>
-                      <p>{currency.format(product.price)} each</p>
-                      {product.quantityOnHand === 0 && (
-                        <p className="stock-unavailable">Currently out of stock</p>
-                      )}
-                      <button
-                        type="button"
-                        className="text-button text-button-danger"
-                        onClick={() => updateCartQuantity(product, 0)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <div className="cart-item-quantity">
-                      <label htmlFor={`cart-quantity-${product.id}`}>Qty</label>
-                      <input
-                        id={`cart-quantity-${product.id}`}
-                        type="number"
-                        min={1}
-                        max={product.quantityOnHand}
-                        step={1}
-                        value={cartQuantityDrafts[product.id] ?? String(quantity)}
-                        disabled={product.quantityOnHand === 0}
-                        onChange={(event) =>
-                          setCartQuantityDrafts((current) => ({
-                            ...current,
-                            [product.id]: event.target.value,
-                          }))
-                        }
-                        onBlur={(event) => {
-                          const value = Number(event.currentTarget.value);
-                          if (Number.isInteger(value) && value > 0) {
-                            updateCartQuantity(product, value);
-                          }
-                          setCartQuantityDrafts((current) => {
-                            const next = { ...current };
-                            delete next[product.id];
-                            return next;
-                          });
-                        }}
-                      />
-                    </div>
-                    <strong className="cart-line-total">
-                      {currency.format(product.price * quantity)}
-                    </strong>
-                  </article>
-                ))}
-              </div>
-
-              <aside className="cart-summary">
-                <h2>Shipping address</h2>
-
-                <form className="shipping-form" onSubmit={handleGetShippingRates}>
-                  <div className="field">
-                    <label htmlFor="shipping-name">Full name</label>
-                    <input
-                      id="shipping-name"
-                      autoComplete="name"
-                      required
-                      maxLength={100}
-                      value={shippingDestination.name}
-                      onChange={(event) =>
-                        setShippingDestination((current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="field">
-                    <label htmlFor="shipping-street1">Street address</label>
-                    <input
-                      id="shipping-street1"
-                      autoComplete="address-line1"
-                      required
-                      maxLength={200}
-                      value={shippingDestination.street1}
-                      onChange={(event) =>
-                        setShippingDestination((current) => ({
-                          ...current,
-                          street1: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="field">
-                    <label htmlFor="shipping-street2">Apartment, suite, etc. (optional)</label>
-                    <input
-                      id="shipping-street2"
-                      autoComplete="address-line2"
-                      maxLength={200}
-                      value={shippingDestination.street2}
-                      onChange={(event) =>
-                        setShippingDestination((current) => ({
-                          ...current,
-                          street2: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="field">
-                    <label htmlFor="shipping-city">City</label>
-                    <input
-                      id="shipping-city"
-                      autoComplete="address-level2"
-                      required
-                      maxLength={100}
-                      value={shippingDestination.city}
-                      onChange={(event) =>
-                        setShippingDestination((current) => ({
-                          ...current,
-                          city: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="shipping-form-row">
-                    <div className="field">
-                      <label htmlFor="shipping-state">State</label>
-                      <input
-                        id="shipping-state"
-                        autoComplete="address-level1"
-                        required
-                        maxLength={2}
-                        minLength={2}
-                        placeholder="IL"
-                        value={shippingDestination.state}
-                        onChange={(event) =>
-                          setShippingDestination((current) => ({
-                            ...current,
-                            state: event.target.value.toUpperCase(),
-                          }))
-                        }
-                      />
-                    </div>
-
-                    <div className="field">
-                      <label htmlFor="shipping-postal-code">ZIP code</label>
-                      <input
-                        id="shipping-postal-code"
-                        autoComplete="postal-code"
-                        required
-                        maxLength={10}
-                        value={shippingDestination.postalCode}
-                        onChange={(event) =>
-                          setShippingDestination((current) => ({
-                            ...current,
-                            postalCode: event.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <p className="muted">Shipping is currently available within the United States.</p>
-
-                  <button
-                    type="submit"
-                    className="button button-secondary cart-checkout-button"
-                    disabled={
-                      shippingLoading ||
-                      submitting ||
-                      cartProductItems.length === 0 ||
-                      cartProductItems.some(
-                        ({ product, quantity }) =>
-                          product.price <= 0 || product.quantityOnHand < quantity,
-                      )
-                    }
-                  >
-                    {shippingLoading ? "Getting rates…" : "Get shipping rates"}
-                  </button>
-                </form>
-
-                {shippingError && (
-                  <p className="error-message" role="alert">{shippingError}</p>
-                )}
-
-                {shippingRates && shippingRates.length > 0 && (
-                  <div className="shipping-rate-list">
-                    <h3>Choose a shipping method</h3>
-                    {shippingRates.map((rate) => (
-                      <label className="shipping-rate-option" key={rate.serviceToken}>
-                        <input
-                          type="radio"
-                          name="shipping-rate"
-                          value={rate.serviceToken}
-                          checked={selectedShippingServiceToken === rate.serviceToken}
-                          onChange={() =>
-                            setSelectedShippingServiceToken(rate.serviceToken)
-                          }
-                        />
-                        <span>
-                          <strong>{rate.serviceName}</strong>
-                          <small>{rate.provider} · {rate.parcelCount} parcel{rate.parcelCount === 1 ? "" : "s"}</small>
-                        </span>
-                        <strong>{currency.format(rate.amount)}</strong>
-                      </label>
-                    ))}
-                  </div>
-                )}
-
-                <h2 className="order-summary-heading">Order summary</h2>
-                <div className="cart-summary-row">
-                  <span>Subtotal</span>
-                  <strong>{currency.format(cartSubtotal)}</strong>
-                </div>
-                <div className="cart-summary-row">
-                  <span>Shipping</span>
-                  <strong>
-                    {shippingRates?.find(
-                      (rate) => rate.serviceToken === selectedShippingServiceToken,
-                    )
-                      ? currency.format(
-                          shippingRates.find(
-                            (rate) => rate.serviceToken === selectedShippingServiceToken,
-                          )!.amount,
-                        )
-                      : "—"}
-                  </strong>
-                </div>
-                <div className="cart-summary-row cart-total-row">
-                  <span>Total</span>
-                  <strong>
-                    {currency.format(
-                      cartSubtotal +
-                        (shippingRates?.find(
-                          (rate) => rate.serviceToken === selectedShippingServiceToken,
-                        )?.amount ?? 0),
-                    )}
-                  </strong>
-                </div>
-                <p className="muted">
-                  Taxes, if applicable, are calculated separately.
-                </p>
-
-                <button
-                  type="button"
-                  className="button button-primary cart-checkout-button"
-                  disabled={
-                    submitting ||
-                    !selectedShippingServiceToken ||
-                    cartProductItems.length === 0 ||
-                    cartProductItems.some(
-                      ({ product, quantity }) =>
-                        product.price <= 0 || product.quantityOnHand < quantity,
-                    )
-                  }
-                  onClick={() => void handleCheckout()}
-                >
-                  {submitting ? "Redirecting…" : "Secure checkout"}
-                </button>
-                {error && <p className="error-message" role="alert">{error}</p>}
-                <Link className="continue-shopping-link" to="/">
-                  Continue shopping
-                </Link>
-              </aside>
-            </div>
-          )}
-        </section>
-      )}
-
-      {!isAdminRoute && cartDrawerOpen && (
-        <div className="cart-drawer-overlay">
-          <button
-            type="button"
-            className="cart-drawer-backdrop"
-            aria-label="Close shopping cart"
-            onClick={() => setCartDrawerOpen(false)}
-          />
-          <aside
-            ref={cartDrawerRef}
-            className="cart-drawer"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="cart-drawer-title"
-            tabIndex={-1}
-          >
-            <div className="cart-drawer-header">
-              <div>
-                <p className="eyebrow">YOUR SELECTION</p>
-                <h2 id="cart-drawer-title">
-                  Your cart <span>({cartItemCount})</span>
-                </h2>
-              </div>
-              <button
-                type="button"
-                className="cart-drawer-close"
-                aria-label="Close shopping cart"
-                onClick={() => setCartDrawerOpen(false)}
-              >
-                ×
-              </button>
-            </div>
-
-            {cartProductItems.length === 0 ? (
-              <div className="cart-drawer-empty">
-                <span aria-hidden="true">◇</span>
-                <h3>Your cart is empty</h3>
-                <p>Find something worth keeping.</p>
-                <button
-                  type="button"
-                  className="button button-secondary"
-                  onClick={() => setCartDrawerOpen(false)}
-                >
-                  Continue shopping
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="cart-drawer-items">
-                  {cartProductItems.map(({ product, quantity }) => (
-                    <article className="cart-drawer-item" key={product.id}>
-                      <div className="cart-drawer-item-art" aria-hidden="true">
-                        {product.name.trim().charAt(0).toLocaleUpperCase()}
-                      </div>
-                      <div className="cart-drawer-item-info">
-                        <Link
-                          to={`/products/${encodeURIComponent(product.id)}`}
-                          onClick={() => setCartDrawerOpen(false)}
-                        >
-                          {product.name}
-                        </Link>
-                        <p>{currency.format(product.price)} each</p>
-                        <div className="cart-drawer-item-controls">
-                          <label
-                            className="visually-hidden"
-                            htmlFor={`drawer-quantity-${product.id}`}
-                          >
-                            Quantity of {product.name}
-                          </label>
-                          <input
-                            id={`drawer-quantity-${product.id}`}
-                            type="number"
-                            min={1}
-                            max={product.quantityOnHand}
-                            step={1}
-                            value={cartQuantityDrafts[product.id] ?? String(quantity)}
-                            disabled={product.quantityOnHand === 0}
-                            onChange={(event) =>
-                              setCartQuantityDrafts((current) => ({
-                                ...current,
-                                [product.id]: event.target.value,
-                              }))
-                            }
-                            onBlur={(event) => {
-                              const value = Number(event.currentTarget.value);
-                              if (Number.isInteger(value) && value > 0) {
-                                updateCartQuantity(product, value);
-                              }
-                              setCartQuantityDrafts((current) => {
-                                const next = { ...current };
-                                delete next[product.id];
-                                return next;
-                              });
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className="text-button text-button-danger"
-                            onClick={() => updateCartQuantity(product, 0)}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                        {product.quantityOnHand === 0 && (
-                          <p className="stock-unavailable">Currently out of stock</p>
-                        )}
-                      </div>
-                      <strong className="cart-drawer-line-total">
-                        {currency.format(product.price * quantity)}
-                      </strong>
-                    </article>
-                  ))}
-                </div>
-
-                <div className="cart-drawer-footer">
-                  <div className="cart-drawer-subtotal">
-                    <span>Subtotal</span>
-                    <strong>{currency.format(cartSubtotal)}</strong>
-                  </div>
-                  <p>Shipping and taxes calculated at checkout.</p>
-                  <Link
-                    className="button button-primary cart-drawer-checkout"
-                    to="/cart"
-                    onClick={() => setCartDrawerOpen(false)}
-                  >
-                    View cart &amp; checkout
-                  </Link>
-                  <button
-                    type="button"
-                    className="cart-drawer-continue"
-                    onClick={() => setCartDrawerOpen(false)}
-                  >
-                    Continue shopping
-                  </button>
-                </div>
-              </>
+              </section>
             )}
-          </aside>
-        </div>
-      )}
 
-      {isOrdersRoute && user && (
-        <section className="cart-section orders-section">
-          <div className="cart-heading">
-            <p className="eyebrow">YOUR ACCOUNT</p>
-            <h1>Your orders</h1>
-            <p className="muted">Review your order history and payment status.</p>
-          </div>
+          {!isProductRoute &&
+            !isCartRoute &&
+            !isCheckoutRoute &&
+            !isOrdersRoute && (
+              <ProductCatalog
+                products={products}
+                filteredProducts={filteredProducts}
+                search={search}
+                setSearch={setSearch}
+                error={error}
+                loginOpen={loginOpen}
+                productImageVersion={productImageVersion}
+                currency={currency}
+                userIsAdmin={Boolean(user?.isAdmin)}
+                submitting={submitting}
+                onEdit={(product) =>
+                  navigate("/admin/products", {
+                    state: { editProduct: product },
+                  })
+                }
+                onDelete={(product) =>
+                  navigate("/admin/products", {
+                    state: { deleteProduct: product },
+                  })
+                }
+              />
+            )}
 
-          {ordersLoading ? (
-            <div className="empty-state" role="status">
-              <p>Loading your orders…</p>
-            </div>
-          ) : ordersError ? (
-            <div className="empty-state">
-              <p className="error-message" role="alert">{ordersError}</p>
-              <button
-                type="button"
-                className="button button-secondary"
-                onClick={() => void loadOrders()}
-              >
-                Try again
-              </button>
-            </div>
-          ) : orders.length === 0 ? (
-            <div className="empty-state">
-              <span className="empty-icon" aria-hidden="true">◇</span>
-              <h2>No orders yet</h2>
-              <p>Your completed purchases will appear here.</p>
-              <Link className="button button-primary" to="/">
-                Browse products
-              </Link>
-            </div>
-          ) : (
-            <div className="orders-list">
-              {orders.map((order) => (
-                <article className="order-card" key={order.id}>
-                  <div className="order-card-heading">
-                    <div>
-                      <p className="eyebrow">ORDER PLACED</p>
-                      <p>{new Date(order.createdAtUtc).toLocaleString()}</p>
-                    </div>
-                    <div className="order-total">
-                      <span className="muted">Order total</span>
-                      <strong>
-                        {new Intl.NumberFormat("en-US", {
-                          style: "currency",
-                          currency: order.currency.toUpperCase(),
-                        }).format(order.totalAmount)}
-                      </strong>
-                    </div>
-                  </div>
-                  <p>
-                    Status:{" "}
-                    <span className={`order-status order-status-${(order.fulfillmentStatus === "Shipped" ? "shipped" : order.fulfillmentStatus === "PartiallyShipped" ? "partially-shipped" : order.status).toLowerCase()}`}>
-                      {order.fulfillmentStatus === "Shipped"
-                        ? "Shipped"
-                        : order.fulfillmentStatus === "PartiallyShipped"
-                          ? "Partially shipped"
-                          : order.status}
-                    </span>
-                  </p>
-                  {order.shipments.length > 0 && (
-                    <div className="customer-shipment-list">
-                      {order.shipments.map(shipment => (
-                        <div key={shipment.id} className="customer-shipment">
-                          <strong>Parcel {shipment.parcelNumber}</strong>
-                          <span className="muted">
-                            {shipment.status}
-                            {shipment.carrier ? ` · ${shipment.carrier}` : ""}
-                          </span>
-                          {shipment.trackingNumber && (
-                            <p>
-                              USPS tracking number:{" "}
-                              <a
-                                href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(shipment.trackingNumber)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {shipment.trackingNumber}
-                              </a>
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <ul className="order-items">
-                    {order.items.map((item, index) => (
-                      <li key={`${order.id}-${item.productId}-${index}`}>
-                        <span>
-                          {item.productName} × {item.quantity}
-                        </span>
-                        <strong>
-                          {new Intl.NumberFormat("en-US", {
-                            style: "currency",
-                            currency: order.currency.toUpperCase(),
-                          }).format(item.unitPrice * item.quantity)}
-                        </strong>
-                      </li>
-                    ))}
-                  </ul>
-                  {order.paidAtUtc && (
-                    <p className="muted order-paid-date">
-                      Paid {new Date(order.paidAtUtc).toLocaleString()}
-                    </p>
-                  )}
-                </article>
-              ))}
-            </div>
+          {isProductRoute && (
+            <ProductDetail
+              selectedProduct={selectedProduct}
+              productImageVersion={productImageVersion}
+              detailQuantity={detailQuantity}
+              setDetailQuantity={setDetailQuantity}
+              currency={currency}
+              error={error}
+              cartItemCount={cartItemCount}
+              addToCart={addToCart}
+              setCartDrawerOpen={setCartDrawerOpen}
+            />
           )}
-        </section>
-      )}
 
-      </>
+          {isCartRoute && (
+            <section className="cart-section">
+              <div className="cart-heading">
+                <p className="eyebrow">YOUR SELECTION</p>
+                <h1>Shopping cart</h1>
+              </div>
+
+              <CartItems
+                items={cartProductItems}
+                currency={currency}
+                quantityDrafts={cartQuantityDrafts}
+                setQuantityDrafts={setCartQuantityDrafts}
+                onUpdateQuantity={updateCartQuantity}
+              />
+
+              {cartProductItems.length > 0 && (
+                <div className="cart-layout">
+                  <div />
+                  <CheckoutSummary
+                    items={cartProductItems}
+                    destination={shippingDestination}
+                    setDestination={setShippingDestination}
+                    shippingRates={shippingRates}
+                    selectedShippingServiceToken={selectedShippingServiceToken}
+                    setSelectedShippingServiceToken={
+                      setSelectedShippingServiceToken
+                    }
+                    shippingLoading={shippingLoading}
+                    shippingError={shippingError}
+                    submitting={submitting}
+                    error={error}
+                    subtotal={cartSubtotal}
+                    currency={currency}
+                    onGetShippingRates={handleGetShippingRates}
+                    onCheckout={() => void handleCheckout()}
+                  />
+                </div>
+              )}
+            </section>
+          )}
+
+          {!isAdminRoute && cartDrawerOpen && (
+            <CartDrawer
+              drawerRef={cartDrawerRef}
+              cartItemCount={cartItemCount}
+              cartProductItems={cartProductItems}
+              cartSubtotal={cartSubtotal}
+              currency={currency}
+              cartQuantityDrafts={cartQuantityDrafts}
+              setCartQuantityDrafts={setCartQuantityDrafts}
+              onClose={() => setCartDrawerOpen(false)}
+              onUpdateQuantity={updateCartQuantity}
+            />
+          )}
+
+          {isOrdersRoute && user && (
+            <CustomerOrderList
+              orders={orders}
+              loading={ordersLoading}
+              error={ordersError}
+              onRefresh={loadOrders}
+            />
+          )}
+        </>
       )}
 
       {user?.isAdmin && isAdminRoute && (
-        <section className="admin-section" id="admin-panel">
-          <div className="admin-section-heading">
-            <div>
-              <p className="eyebrow">STORE MANAGEMENT</p>
-              <h2>{isAdminOrdersRoute ? "Order management" : isAdminStorefrontRoute ? "Storefront content" : "Product management"}</h2>
-              <a href="/">Back to storefront</a>
-              <nav className="admin-nav" aria-label="Admin navigation">
-                <Link
-                  className="admin-nav-link"
-                  to="/admin/orders"
-                  aria-current={isAdminOrdersRoute ? "page" : undefined}
-                >
-                  Orders
-                </Link>
-                <Link
-                  className="admin-nav-link"
-                  to="/admin/products"
-                  aria-current={isAdminProductsRoute ? "page" : undefined}
-                >
-                  Products
-                </Link>
-                <Link
-                  className="admin-nav-link"
-                  to="/admin/storefront"
-                  aria-current={isAdminStorefrontRoute ? "page" : undefined}
-                >
-                  Storefront
-                </Link>
-              </nav>
-              <p className="muted">
-                {isAdminOrdersRoute
-                  ? "Review orders, manage fulfillment, and track shipments."
-                  : isAdminStorefrontRoute
-                    ? "Update your store identity, page content, logo, and favicon."
-                    : "Manage your product catalog and inventory."}
-              </p>
-            </div>
-            <span className="admin-badge">Owner access</span>
-          </div>
-
-          {isAdminOrdersRoute && (
-          <div className="admin-card admin-orders-card">
-            <div className="admin-orders-heading">
-              <div>
-                <h3>All orders</h3>
-                <p className="muted">
-                  Orders placed by customers across your store.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="button button-secondary"
-                onClick={() => void loadAdminOrders()}
-                disabled={adminOrdersLoading}
-              >
-                {adminOrdersLoading ? "Refreshing…" : "Refresh"}
-              </button>
-            </div>
-
-            <div className="admin-list-filters">
-              <div className="field">
-                <label htmlFor="admin-order-search">Search orders</label>
-                <input
-                  id="admin-order-search"
-                  type="search"
-                  value={adminOrderSearch}
-                  placeholder="Email, name, city, status, tracking…"
-                  onChange={(event) => {
-                    setAdminOrderSearch(event.target.value);
-                    setAdminOrderPage(1);
-                  }}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="admin-order-archive">Order view</label>
-                <select
-                  id="admin-order-archive"
-                  value={adminOrderArchive}
-                  onChange={(event) => {
-                    setAdminOrderArchive(event.target.value as "active" | "archived" | "all");
-                    setAdminOrderPage(1);
-                  }}
-                >
-                  <option value="active">Active orders</option>
-                  <option value="archived">Archived orders</option>
-                  <option value="all">All orders</option>
-                </select>
-              </div>
-            </div>
-
-            {adminOrdersLoading && adminOrders.length === 0 ? (
-              <p>Loading orders…</p>
-            ) : adminOrdersError ? (
-              <div>
-                <p className="error-message" role="alert">
-                  {adminOrdersError}
-                </p>
-                <button type="button" onClick={() => void loadAdminOrders()}>
-                  Try again
-                </button>
-              </div>
-            ) : adminOrders.length === 0 ? (
-              <p className="muted">
-                {adminOrdersTotalCount === 0
-                  ? "No matching orders were found."
-                  : "No orders on this page."}
-              </p>
-            ) : (
-              <>
-                <p className="muted">
-                  Showing {adminOrders.length} of {adminOrdersTotalCount} orders
-                </p>
-
-                <div className="admin-orders-list">
-                  {adminOrders.map(order => (
-                    <details className="admin-order" key={order.id}>
-                      <summary>
-                        <div className="admin-order-summary">
-                          <div>
-                            <strong>{order.customerEmail || "Customer email unavailable"}</strong>
-                            <span className="muted">
-                              {new Date(order.createdAtUtc).toLocaleString()}
-                            </span>
-                          </div>
-                          <div>
-                            <strong>{currency.format(order.totalAmount)}</strong>
-                            <span className="admin-order-status">{order.status}</span>
-                          </div>
-                        </div>
-                      </summary>
-
-                      <div className="admin-order-details">
-                        <div className="form-actions">
-                          <button
-                            type="button"
-                            className="button button-secondary"
-                            onClick={() => void handleSetOrderArchived(order)}
-                            disabled={adminActionId === order.id}
-                          >
-                            {adminActionId === order.id
-                              ? "Updating…"
-                              : order.isArchived ? "Unarchive order" : "Archive order"}
-                          </button>
-                          {order.isArchived && <span className="muted">Archived</span>}
-                        </div>
-                        <p><strong>Order ID:</strong> {order.id}</p>
-                        <p><strong>Payment status:</strong> {order.status}</p>
-                        {order.paidAtUtc && (
-                          <p>
-                            <strong>Paid:</strong>{" "}
-                            {new Date(order.paidAtUtc).toLocaleString()}
-                          </p>
-                        )}
-
-                        <h4>Ship to</h4>
-                        <div className="admin-order-shipping-address">
-                          <strong>{order.shippingName || "Recipient name unavailable"}</strong>
-                          {order.shippingStreet1 && <p>{order.shippingStreet1}</p>}
-                          {order.shippingStreet2 && <p>{order.shippingStreet2}</p>}
-                          <p>
-                            {[order.shippingCity, order.shippingState, order.shippingPostalCode]
-                              .filter(Boolean)
-                              .join(", ")}
-                          </p>
-                          {order.shippingCountry && <p>{order.shippingCountry}</p>}
-                        </div>
-
-                        <h4>Shipping</h4>
-                        <p>
-                          <strong>Carrier:</strong>{" "}
-                          {order.shippingProvider || "Not specified"}
-                        </p>
-                        <p>
-                          <strong>Service:</strong>{" "}
-                          {order.shippingServiceName || "Not specified"}
-                        </p>
-                        <p>
-                          <strong>Shipping cost:</strong>{" "}
-                          {currency.format(order.shippingAmount)}
-                        </p>
-
-                        <h4>Fulfillment</h4>
-                        <p>
-                          <strong>Fulfillment status:</strong>{" "}
-                          {order.fulfillmentStatus === "PartiallyShipped"
-                            ? "Partially shipped"
-                            : order.fulfillmentStatus}
-                        </p>
-
-                        {(order.shipments.length > 0
-                          ? order.shipments
-                          : [{
-                              id: "",
-                              parcelNumber: 1,
-                              carrier: order.shippingProvider,
-                              serviceName: order.shippingServiceName,
-                              status: "Pending",
-                              trackingNumber: null,
-                              trackingUrl: null,
-                              shippedAtUtc: null,
-                            }]
-                        ).map(shipment => (
-                          <AdminShipmentTrackingForm
-                            key={`${order.id}-parcel-${shipment.parcelNumber}`}
-                            orderId={order.id}
-                            shipment={shipment}
-                            onSaved={() => loadAdminOrders()}
-                          />
-                        ))}
-
-                        <h4>Items</h4>
-                        <ul>
-                          {order.items.map((item, index) => (
-                            <li key={`${item.productId}-${index}`}>
-                              {item.productName} × {item.quantity}
-                              {" — "}
-                              {currency.format(item.unitPrice * item.quantity)}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </details>
-                  ))}
-                </div>
-                <div className="admin-pagination">
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    disabled={adminOrderPage <= 1 || adminOrdersLoading}
-                    onClick={() => setAdminOrderPage((page) => page - 1)}
-                  >
-                    Previous
-                  </button>
-                  <span>
-                    Showing {adminOrdersTotalCount === 0 ? 0 : (adminOrderPage - 1) * 10 + 1}–
-                    {Math.min(adminOrderPage * 10, adminOrdersTotalCount)} of {adminOrdersTotalCount}
-                    {" · "}Page {adminOrderPage} of {Math.max(1, adminOrdersTotalPages)}
-                  </span>
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    disabled={adminOrderPage >= adminOrdersTotalPages || adminOrdersLoading}
-                    onClick={() => setAdminOrderPage((page) => page + 1)}
-                  >
-                    Next
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-
-          )}
-
-          {isAdminStorefrontRoute && (
-          <div className="admin-card">
-            <h3>Storefront content</h3>
-            <form className="product-form" onSubmit={handleSaveSiteSettings}>
-              <div className="field">
-                <label htmlFor="site-page-title">Browser page title</label>
-                <input id="site-page-title" required maxLength={200}
-                  value={siteSettingsForm.pageTitle}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, pageTitle: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-header-text">Header / store name</label>
-                <input id="site-header-text" required maxLength={200}
-                  value={siteSettingsForm.headerText}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, headerText: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-hero-title">Main heading (use a new line for a line break)</label>
-                <textarea id="site-hero-title" required maxLength={500} rows={2}
-                  value={siteSettingsForm.heroTitle}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroTitle: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-hero-description">Page description</label>
-                <textarea id="site-hero-description" required maxLength={2000} rows={3}
-                  value={siteSettingsForm.heroDescription}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, heroDescription: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-footer-text">Footer text</label>
-                <input id="site-footer-text" required maxLength={500}
-                  value={siteSettingsForm.footerText}
-                  onChange={event => setSiteSettingsForm({ ...siteSettingsForm, footerText: event.target.value })} />
-              </div>
-              <div className="field">
-                <label htmlFor="site-favicon">Browser favicon (PNG, JPEG, or WebP; max 2 MB)</label>
-                {(faviconPreviewUrl || siteSettings.faviconUrl) && (
-                  <div className="logo-preview">
-                    <img
-                      className="favicon-preview-image"
-                      src={faviconPreviewUrl ?? siteSettings.faviconUrl ?? ""}
-                      alt={faviconPreviewUrl ? "Selected favicon preview" : "Current favicon"}
-                    />
-                    <button
-                      type="button"
-                      className="text-button text-button-danger"
-                      onClick={() => void handleRemoveFavicon()}
-                      disabled={submitting}
-                    >
-                      Remove favicon
-                    </button>
-                  </div>
-                )}
-                <input
-                  id="site-favicon"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  disabled={submitting}
-                  onChange={(event) => {
-                    const file = event.currentTarget.files?.[0];
-                    event.currentTarget.value = "";
-                    handleSelectFavicon(file);
-                  }}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="site-logo">Store logo (PNG, JPEG, or WebP; max 2 MB)</label>
-                {(logoPreviewUrl || siteSettings.logoUrl) && (
-                  <div className="logo-preview">
-                    <img
-                      src={logoPreviewUrl ?? siteSettings.logoUrl ?? ""}
-                      alt={logoPreviewUrl ? "Selected store logo preview" : "Current store logo"}
-                    />
-                    <button
-                      type="button"
-                      className="text-button text-button-danger"
-                      onClick={() => void handleRemoveLogo()}
-                      disabled={submitting}
-                    >
-                      Remove logo
-                    </button>
-                  </div>
-                )}
-                <input
-                  id="site-logo"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  disabled={submitting}
-                  onChange={(event) => {
-                    const file = event.currentTarget.files?.[0];
-                    event.currentTarget.value = "";
-                    handleSelectLogo(file);
-                  }}
-                />
-              </div>
-              <div className="form-actions">
-                <button type="submit" className="button button-primary" disabled={submitting}>
-                  {submitting ? "Saving…" : "Save storefront content"}
-                </button>
-              </div>
-            </form>
-          </div>
-          )}
-
-          {isAdminProductsRoute && (
-            <>
-          <div className="admin-card">
-            <h3>{editingId ? "Edit product" : "Add a product"}</h3>
-
-            <form className="product-form" onSubmit={handleSaveProduct}>
-              <div className="field">
-                <label htmlFor="product-name">Product name</label>
-                <input
-                  id="product-name"
-                  required
-                  maxLength={200}
-                  value={form.name}
-                  onChange={(event) =>
-                    setForm({ ...form, name: event.target.value })
-                  }
-                />
-              </div>
-
-              <div className="field">
-                <label htmlFor="product-description">Description</label>
-                <textarea
-                  id="product-description"
-                  maxLength={2000}
-                  rows={3}
-                  value={form.description}
-                  onChange={(event) =>
-                    setForm({ ...form, description: event.target.value })
-                  }
-                />
-              </div>
-
-              <div className="field">
-                <label htmlFor="product-tags">Search tags</label>
-                <input
-                  id="product-tags"
-                  type="text"
-                  value={form.tags.join(",")}
-                  onChange={(event) =>
-                    setForm({ ...form, tags: event.target.value.split(",") })
-                  }
-                  placeholder="e.g. lavender, floral, relaxing"
-                  disabled={submitting}
-                />
-                <p className="muted">
-                  Separate tags with commas. Customers can search these tags,
-                  but they are not displayed on the storefront.
-                </p>
-              </div>
-
-              <div className="admin-form-row">
-                <div className="field">
-                  <label htmlFor="product-price">Price (USD)</label>
-                  <input
-                    id="product-price"
-                    type="number"
-                    min="0"
-                    max="99999999.99"
-                    step="0.01"
-                    required
-                    value={priceDraft}
-                    onChange={(event) => setPriceDraft(event.target.value)}
-                  />
-                </div>
-
-                <div className="field">
-                  <label htmlFor="product-quantity">Quantity on hand</label>
-                  <input
-                    id="product-quantity"
-                    type="number"
-                    min="0"
-                    step="1"
-                    required
-                    value={quantityDraft}
-                    onChange={(event) => setQuantityDraft(event.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="field">
-                <label htmlFor="product-image">
-                  Product image (PNG, JPEG, or WebP; max 2 MB)
-                </label>
-
-                {(productImagePreviewUrl || editingProduct?.hasImage) && (
-                  <div className="logo-preview">
-                    <img
-                      src={
-                        productImagePreviewUrl ??
-                        getProductImageUrl(
-                          editingProduct!.id,
-                          productImageVersion,
-                        )
-                      }
-                      alt={
-                        productImagePreviewUrl
-                          ? "Selected product image preview"
-                          : "Current product image"
-                      }
-                    />
-                  </div>
-                )}
-
-                <input
-                  id="product-image"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  disabled={submitting}
-                  onChange={(event) => {
-                    const file = event.currentTarget.files?.[0];
-                    event.currentTarget.value = "";
-                    handleSelectProductImage(file);
-                  }}
-                />
-                <p className="muted">
-                  Selecting a new image replaces the current product image.
-                </p>
-              </div>
-
-              {error && (
-                <p className="error-message" role="alert">{error}</p>
-              )}
-
-              <div className="form-actions">
-                <button
-                  type="submit"
-                  className="button button-primary"
-                  disabled={submitting}
-                >
-                  {submitting
-                    ? "Saving…"
-                    : editingId
-                      ? "Save changes"
-                      : "Add product"}
-                </button>
-
-                {editingId && (
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    onClick={resetForm}
-                    disabled={submitting}
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </form>
-          </div>
-
-          <div className="admin-card admin-products-card">
-            <h3>Manage products</h3>
-
-            <div className="admin-list-filters">
-              <div className="field">
-                <label htmlFor="admin-product-search">Search products</label>
-                <input
-                  id="admin-product-search"
-                  type="search"
-                  value={adminProductSearch}
-                  placeholder="Name, description, or tag…"
-                  onChange={(event) => {
-                    setAdminProductSearch(event.target.value);
-                    setAdminProductPage(1);
-                  }}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="admin-product-visibility">Product visibility</label>
-                <select
-                  id="admin-product-visibility"
-                  value={adminProductVisibility}
-                  onChange={(event) => {
-                    setAdminProductVisibility(event.target.value as "active" | "hidden" | "all");
-                    setAdminProductPage(1);
-                  }}
-                >
-                  <option value="active">Active products</option>
-                  <option value="hidden">Hidden products</option>
-                  <option value="all">All products</option>
-                </select>
-              </div>
-              <button
-                type="button"
-                className="button button-secondary"
-                onClick={() => void loadAdminProducts()}
-                disabled={adminProductsLoading}
-              >
-                {adminProductsLoading ? "Refreshing…" : "Refresh"}
-              </button>
-            </div>
-
-            {adminProductsLoading && adminProducts.length === 0 ? (
-              <p>Loading products…</p>
-            ) : adminProductsError ? (
-              <div>
-                <p className="error-message" role="alert">{adminProductsError}</p>
-                <button type="button" onClick={() => void loadAdminProducts()}>
-                  Try again
-                </button>
-              </div>
-            ) : adminProducts.length === 0 ? (
-              <p className="muted">
-                {adminProductsTotalCount === 0
-                  ? "No matching products. You can add a product below."
-                  : "No products on this page."}
-              </p>
-            ) : (
-              <>
-                <p className="muted">
-                  Showing {adminProducts.length} of {adminProductsTotalCount} products
-                </p>
-                <div className="admin-product-list">
-                  {adminProducts.map((product) => (
-                    <div className="admin-product-row" key={product.id}>
-                      <div>
-                        <strong>{product.name}</strong>
-                        <p className="muted">
-                          {currency.format(product.price)} ·{" "}
-                          {product.quantityOnHand} in stock ·{" "}
-                          {product.isActive ? "Visible" : "Hidden"}
-                        </p>
-                      </div>
-                      <div className="product-admin-actions">
-                        <button
-                          type="button"
-                          className="text-button"
-                          onClick={() => startEditing(product)}
-                          disabled={submitting || adminActionId === product.id}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="text-button"
-                          onClick={() => void handleSetProductVisibility(product)}
-                          disabled={adminActionId === product.id}
-                        >
-                          {adminActionId === product.id
-                            ? "Updating…"
-                            : product.isActive ? "Hide" : "Unhide"}
-                        </button>
-                        <button
-                          type="button"
-                          className="text-button text-button-danger"
-                          onClick={() => void handleDeleteProduct(product)}
-                          disabled={submitting || adminActionId === product.id}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="admin-pagination">
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    disabled={adminProductPage <= 1 || adminProductsLoading}
-                    onClick={() => setAdminProductPage((page) => page - 1)}
-                  >
-                    Previous
-                  </button>
-                  <span>
-                    Showing {adminProductsTotalCount === 0 ? 0 : (adminProductPage - 1) * 10 + 1}–
-                    {Math.min(adminProductPage * 10, adminProductsTotalCount)} of {adminProductsTotalCount}
-                    {" · "}Page {adminProductPage} of {Math.max(1, adminProductsTotalPages)}
-                  </span>
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    disabled={adminProductPage >= adminProductsTotalPages || adminProductsLoading}
-                    onClick={() => setAdminProductPage((page) => page + 1)}
-                  >
-                    Next
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-
-            </>
-          )}
-        </section>
+        <AdminPage
+          loading={loading}
+          user={user}
+          routes={{
+            isAdminProductsRoute,
+            isAdminOrdersRoute,
+            isAdminStorefrontRoute,
+          }}
+          storefront={{
+            products,
+            setProducts,
+            loadProducts,
+            siteSettings,
+            setSiteSettings,
+          }}
+          shared={{
+            error,
+            setError,
+            submitting,
+            setSubmitting,
+            currency,
+            productImageVersion,
+            onProductImageUpdated: () =>
+              setProductImageVersion((version) => version + 1),
+          }}
+        />
       )}
 
-      {!isAdminRoute && <footer className="site-footer">
-        <Link className="brand footer-brand" to="/">
-          {siteSettings.logoUrl ? (
-            <img className="brand-logo" src={siteSettings.logoUrl} alt="" />
-          ) : (
-            <span className="brand-mark" aria-hidden="true">
-              {siteSettings.pageTitle.trim().charAt(0).toLocaleUpperCase() || "L"}
-            </span>
-          )}
-          <span>{siteSettings.headerText}</span>
-        </Link>
-        <p>{siteSettings.footerText}</p>
-      </footer>}
+      {!isAdminRoute && <SiteFooter siteSettings={siteSettings} />}
 
       {loginOpen && (
-        <div
-          className="dialog-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !submitting) {
-              setLoginOpen(false);
-              setError("");
-            }
+        <LoginDialog
+          isRegistering={isRegistering}
+          setIsRegistering={setIsRegistering}
+          email={email}
+          setEmail={setEmail}
+          password={password}
+          setPassword={setPassword}
+          error={error}
+          setError={setError}
+          submitting={submitting}
+          onLogin={handleLogin}
+          onRegister={handleRegister}
+          onClose={() => {
+            setLoginOpen(false);
+            setError("");
           }}
-        >
-          <section
-            className="login-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="login-title"
-          >
-            <button
-              type="button"
-              className="dialog-close"
-              aria-label="Close sign-in dialog"
-              onClick={() => {
-                setLoginOpen(false);
-                setError("");
-              }}
-              disabled={submitting}
-            >
-              ×
-            </button>
-
-            <span className="brand-mark dialog-brand-mark" aria-hidden="true">
-              L
-            </span>
-            <p className="eyebrow">WELCOME BACK</p>
-            <h2 id="login-title">{isRegistering ? "Create your account" : "Sign in to Ledger"}</h2>
-            <p className="muted">
-              {isRegistering
-                ? "Create an account to place orders and track your purchases."
-                : "Sign in to access your account."}
-            </p>
-
-            <form onSubmit={isRegistering ? handleRegister : handleLogin}>
-              <div className="field">
-                <label htmlFor="login-email">Email</label>
-                <input
-                  id="login-email"
-                  type="email"
-                  autoComplete="username"
-                  required
-                  autoFocus
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </div>
-
-              <div className="field">
-                <label htmlFor="login-password">Password</label>
-                <input
-                  id="login-password"
-                  type="password"
-                  autoComplete={isRegistering ? "new-password" : "current-password"}
-                  minLength={isRegistering ? 8 : undefined}
-                  required
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </div>
-
-              {error && (
-                <p className="error-message" role="alert">{error}</p>
-              )}
-
-              <button
-                type="submit"
-                className="button button-primary dialog-submit"
-                disabled={submitting}
-              >
-                {submitting
-                  ? (isRegistering ? "Creating account…" : "Signing in…")
-                  : (isRegistering ? "Create account" : "Sign in")}
-              </button>
-            </form>
-
-            <p className="auth-switch">
-              {isRegistering ? "Already have an account?" : "New to Ledger?"}{" "}
-              <button
-                type="button"
-                className="auth-switch-button"
-                onClick={() => {
-                  setIsRegistering((current) => !current);
-                  setError("");
-                }}
-                disabled={submitting}
-              >
-                {isRegistering ? "Sign in" : "Create an account"}
-              </button>
-            </p>
-          </section>
-        </div>
+        />
       )}
     </main>
   );
