@@ -19,7 +19,7 @@ import { useCheckout } from "./hooks/useCheckout";
 import { useStorefrontData } from "./hooks/useStorefrontData";
 
 const defaultSiteSettings: SiteSettings = {
-  pageTitle: "Ledger",
+  pageTitle: "",
   headerText: "Ledger",
   heroTitle: "Find something\nworth keeping.",
   heroDescription:
@@ -229,7 +229,11 @@ function App() {
   if (loading) {
     return (
       <main className="app-shell loading-screen">
-        <p>Loading Ledger…</p>
+        <p>
+          Loading{siteSettings.pageTitle.trim()
+            ? ` ${siteSettings.pageTitle.trim()}`
+            : ""}…
+        </p>
       </main>
     );
   }

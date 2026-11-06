@@ -61,17 +61,21 @@ export function useStorefrontData({
 
     async function initialize() {
       try {
-        const [currentUser, items, settings] = await Promise.all([
+        const settingsPromise = getSiteSettings().then((settings) => {
+          if (active) setSiteSettings(settings);
+        });
+
+        const [currentUser, items] = await Promise.all([
           getCurrentUser(),
           getProducts(),
-          getSiteSettings(),
         ]);
+
+        await settingsPromise;
 
         if (!active) return;
 
         setUser(currentUser);
         setProducts(items);
-        setSiteSettings(settings);
       } catch {
         if (active) {
           setError(
