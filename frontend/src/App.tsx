@@ -229,11 +229,10 @@ function App() {
   if (loading) {
     return (
       <main className="app-shell loading-screen">
-        <p>
-          Loading{siteSettings.pageTitle.trim()
-            ? ` ${siteSettings.pageTitle.trim()}`
-            : ""}…
-        </p>
+        <div className="loading-content">
+          <p>Loading…</p>
+          <span className="loading-spinner" role="status" aria-label="Loading" />
+        </div>
       </main>
     );
   }
