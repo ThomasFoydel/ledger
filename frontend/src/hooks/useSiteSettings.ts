@@ -15,18 +15,6 @@ type UseSiteSettingsOptions = {
   setSubmitting: (submitting: boolean) => void;
 };
 
-function withImageCacheBust(settings: SiteSettings): SiteSettings {
-  const version = Date.now();
-  const bust = (url: string | null) =>
-    url ? `${url}${url.includes("?") ? "&" : "?"}v=${version}` : null;
-
-  return {
-    ...settings,
-    logoUrl: bust(settings.logoUrl),
-    faviconUrl: bust(settings.faviconUrl),
-  };
-}
-
 export function useSiteSettings({
   siteSettings,
   setSiteSettings,
@@ -65,7 +53,7 @@ export function useSiteSettings({
     setError("");
     setSubmitting(true);
     try {
-      const saved = withImageCacheBust(await deleteSiteLogo());
+      const saved = await deleteSiteLogo();
       setSiteSettings(saved);
       setSiteSettingsForm(saved);
       setPendingLogoFile(null);
@@ -90,7 +78,7 @@ export function useSiteSettings({
     setError("");
     setSubmitting(true);
     try {
-      const saved = withImageCacheBust(await deleteSiteFavicon());
+      const saved = await deleteSiteFavicon();
       setSiteSettings(saved);
       setSiteSettingsForm(saved);
       setPendingFaviconFile(null);
@@ -109,12 +97,12 @@ export function useSiteSettings({
     setError("");
     setSubmitting(true);
     try {
-      let saved = withImageCacheBust(await updateSiteSettings(siteSettingsForm));
+      let saved = await updateSiteSettings(siteSettingsForm);
       setSiteSettings(saved);
       setSiteSettingsForm(saved);
 
       if (pendingLogoFile) {
-        saved = withImageCacheBust(await uploadSiteLogo(pendingLogoFile));
+        saved = await uploadSiteLogo(pendingLogoFile);
         setSiteSettings(saved);
         setSiteSettingsForm(saved);
         setPendingLogoFile(null);
@@ -122,7 +110,7 @@ export function useSiteSettings({
       }
 
       if (pendingFaviconFile) {
-        saved = withImageCacheBust(await uploadSiteFavicon(pendingFaviconFile));
+        saved = await uploadSiteFavicon(pendingFaviconFile);
         setSiteSettings(saved);
         setSiteSettingsForm(saved);
         setPendingFaviconFile(null);

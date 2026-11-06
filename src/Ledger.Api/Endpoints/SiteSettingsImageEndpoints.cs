@@ -106,7 +106,7 @@ public static class SiteSettingsImageEndpoints
         if (data is null || string.IsNullOrWhiteSpace(contentType))
             return Results.NotFound();
 
-        http.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+        http.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
         return Results.File(data, contentType);
     }
 
@@ -144,7 +144,7 @@ public static class SiteSettingsImageEndpoints
             });
 
         var key = favicon ? FaviconKey : LogoKey;
-        var url = favicon ? FaviconPath : LogoPath;
+        var url = (favicon ? FaviconPath : LogoPath) + "?v=" + Guid.NewGuid().ToString("N");
 
         // Store the object first. Preserve the existing database copy until
         // the object upload succeeds and the metadata update is saved.
