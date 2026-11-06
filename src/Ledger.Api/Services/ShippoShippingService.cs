@@ -5,35 +5,6 @@ using System.Text.Json;
 
 namespace Ledger.Api.Services;
 
-public sealed record ShippingAddress(
-    string Name,
-    string Street1,
-    string? Street2,
-    string City,
-    string State,
-    string PostalCode,
-    string Country);
-
-public sealed record ShippoParcelRate(
-    int ParcelIndex,
-    string RateId,
-    string Provider,
-    string ServiceToken,
-    string ServiceName,
-    decimal Amount,
-    string Currency);
-
-public sealed record ValidatedShippoRate(
-    string RateId,
-    string Provider,
-    string ServiceToken,
-    string ServiceName,
-    decimal Amount,
-    string Currency);
-
-public sealed class InvalidShippingRateException(string message)
-    : Exception(message);
-
 public sealed class ShippoShippingService
 {
     private readonly HttpClient _httpClient;
@@ -133,8 +104,8 @@ public sealed class ShippoShippingService
 
             foreach (var rate in rates.EnumerateArray())
             {
-                var provider = GetString(rate, "provider");
-                var rateId = GetString(rate, "object_id");
+                var provider = ShippoRateValidator.GetString(rate, "provider");
+                var rateId = ShippoRateValidator.GetString(rate, "object_id");
 
                 if (!string.Equals(
                     provider, "USPS",
@@ -146,13 +117,13 @@ public sealed class ShippoShippingService
                     continue;
                 }
 
-                var serviceToken = GetString(serviceLevel, "token");
+                var serviceToken = ShippoRateValidator.GetString(serviceLevel, "token");
 
-                if (!IsAllowedService(serviceToken))
+                if (!ShippoRateValidator.IsAllowedService(serviceToken))
                     continue;
 
                 if (!decimal.TryParse(
-                    GetString(rate, "amount"),
+                    ShippoRateValidator.GetString(rate, "amount"),
                     NumberStyles.Number,
                     CultureInfo.InvariantCulture,
                     out var amount))
@@ -165,9 +136,9 @@ public sealed class ShippoShippingService
                     rateId,
                     provider,
                     serviceToken,
-                    GetString(serviceLevel, "name"),
+                    ShippoRateValidator.GetString(serviceLevel, "name"),
                     amount,
-                    GetString(rate, "currency")));
+                    ShippoRateValidator.GetString(rate, "currency")));
             }
         }
 
@@ -183,7 +154,7 @@ public sealed class ShippoShippingService
     {
         EnsureConfigured();
 
-        if (!IsAllowedService(serviceToken))
+        if (!ShippoRateValidator.IsAllowedService(serviceToken))
         {
             throw new InvalidShippingRateException(
                 "The selected shipping service is not supported.");
@@ -227,17 +198,17 @@ public sealed class ShippoShippingService
             var rate = rateDocument.RootElement;
 
             if (!string.Equals(
-                    GetString(rate, "object_id"),
+                    ShippoRateValidator.GetString(rate, "object_id"),
                     rateId,
                     StringComparison.Ordinal) ||
                 !string.Equals(
-                    GetString(rate, "provider"),
+                    ShippoRateValidator.GetString(rate, "provider"),
                     "USPS",
                     StringComparison.OrdinalIgnoreCase) ||
                 !rate.TryGetProperty(
                     "servicelevel", out var serviceLevel) ||
                 !string.Equals(
-                    GetString(serviceLevel, "token"),
+                    ShippoRateValidator.GetString(serviceLevel, "token"),
                     serviceToken,
                     StringComparison.Ordinal))
             {
@@ -245,11 +216,11 @@ public sealed class ShippoShippingService
                     "A selected shipping rate does not match the requested service.");
             }
 
-            var currency = GetString(rate, "currency");
+            var currency = ShippoRateValidator.GetString(rate, "currency");
 
             if (!string.Equals(currency, "USD", StringComparison.OrdinalIgnoreCase) ||
                 !decimal.TryParse(
-                    GetString(rate, "amount"),
+                    ShippoRateValidator.GetString(rate, "amount"),
                     NumberStyles.Number,
                     CultureInfo.InvariantCulture,
                     out var amount) ||
@@ -259,7 +230,7 @@ public sealed class ShippoShippingService
                     "A selected shipping rate has an invalid price.");
             }
 
-            var shipmentId = GetString(rate, "shipment");
+            var shipmentId = ShippoRateValidator.GetString(rate, "shipment");
 
             if (string.IsNullOrWhiteSpace(shipmentId))
             {
@@ -287,13 +258,13 @@ public sealed class ShippoShippingService
             var shipment = shipmentDocument.RootElement;
 
             if (!shipment.TryGetProperty("address_to", out var addressTo) ||
-                !AddressMatches(addressTo, destination) ||
+                !ShippoRateValidator.AddressMatches(addressTo, destination) ||
                 !shipment.TryGetProperty("address_from", out var addressFrom) ||
-                !OriginMatches(addressFrom, origin) ||
+                !ShippoRateValidator.OriginMatches(addressFrom, origin) ||
                 !shipment.TryGetProperty("parcels", out var shipmentParcels) ||
                 shipmentParcels.ValueKind != JsonValueKind.Array ||
                 shipmentParcels.GetArrayLength() != 1 ||
-                !ParcelMatches(
+                !ShippoRateValidator.ParcelMatches(
                     shipmentParcels[0],
                     parcels[index]))
             {
@@ -305,7 +276,7 @@ public sealed class ShippoShippingService
                 rateId,
                 "USPS",
                 serviceToken,
-                GetString(serviceLevel, "name"),
+                ShippoRateValidator.GetString(serviceLevel, "name"),
                 amount,
                 currency));
         }
@@ -353,82 +324,10 @@ public sealed class ShippoShippingService
         };
     }
 
-    private static bool AddressMatches(
-        JsonElement address,
-        ShippingAddress expected)
-    {
-        return Same(GetString(address, "street1"), expected.Street1) &&
-               Same(GetString(address, "street2"), expected.Street2 ?? "") &&
-               Same(GetString(address, "city"), expected.City) &&
-               Same(GetString(address, "state"), expected.State) &&
-               Same(GetString(address, "zip"), expected.PostalCode) &&
-               Same(GetString(address, "country"), expected.Country);
-    }
-
-    private static bool OriginMatches(
-        JsonElement address,
-        object expectedOrigin)
-    {
-        // Compare the shipment against the configured sender address.
-        var expected = JsonSerializer.SerializeToElement(expectedOrigin);
-
-        return Same(GetString(address, "name"), GetString(expected, "name")) &&
-               Same(GetString(address, "street1"), GetString(expected, "street1")) &&
-               Same(GetString(address, "city"), GetString(expected, "city")) &&
-               Same(GetString(address, "state"), GetString(expected, "state")) &&
-               Same(GetString(address, "zip"), GetString(expected, "zip")) &&
-               Same(GetString(address, "country"), GetString(expected, "country"));
-    }
-
-    private static bool ParcelMatches(
-        JsonElement actual,
-        ShippingParcel expected)
-    {
-        return Same(GetString(actual, "distance_unit"), "in") &&
-               Same(GetString(actual, "mass_unit"), "oz") &&
-               DecimalMatches(GetString(actual, "length"), expected.Length) &&
-               DecimalMatches(GetString(actual, "width"), expected.Width) &&
-               DecimalMatches(GetString(actual, "height"), expected.Height) &&
-               DecimalMatches(GetString(actual, "weight"), expected.WeightOunces);
-    }
-
-    private static bool DecimalMatches(string value, decimal expected)
-    {
-        return decimal.TryParse(
-                   value,
-                   NumberStyles.Number,
-                   CultureInfo.InvariantCulture,
-                   out var actual) &&
-               actual == expected;
-    }
-
-    private static bool Same(string? actual, string? expected)
-    {
-        return string.Equals(
-            (actual ?? "").Trim(),
-            (expected ?? "").Trim(),
-            StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsAllowedService(string token)
-    {
-        return token is "usps_ground_advantage" or "usps_priority";
-    }
-
     private static string Format(decimal value)
     {
         return value.ToString(CultureInfo.InvariantCulture);
     }
 
-    private static string GetString(
-        JsonElement element,
-        string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out var value))
-            return "";
 
-        return value.ValueKind == JsonValueKind.String
-            ? value.GetString() ?? ""
-            : value.ToString();
-    }
 }
