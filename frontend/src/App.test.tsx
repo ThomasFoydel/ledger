@@ -1,9 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import * as api from "./api";
 import type { AdminOrder, Product, User } from "./api";
+import * as api from "./api";
 
 vi.mock("./api", () => ({
   getCurrentUser: vi.fn(),
@@ -50,7 +56,8 @@ const testSiteSettings = {
   pageTitle: "Ledger",
   headerText: "Ledger",
   heroTitle: "Find something\\nworth keeping.",
-  heroDescription: "Browse our collection and find just what you’re looking for.",
+  heroDescription:
+    "Browse our collection and find just what you’re looking for.",
   footerText: "Thoughtfully managed. Simply shopped.",
   logoUrl: null,
   faviconUrl: null,
@@ -117,7 +124,10 @@ beforeEach(() => {
   vi.mocked(api.createProduct).mockResolvedValue(sampleProduct);
   vi.mocked(api.updateProduct).mockResolvedValue(sampleProduct);
   vi.mocked(api.deleteProduct).mockResolvedValue(undefined);
-  vi.stubGlobal("confirm", vi.fn(() => true));
+  vi.stubGlobal(
+    "confirm",
+    vi.fn(() => true),
+  );
 });
 
 afterEach(() => {
@@ -148,13 +158,16 @@ async function signInAsAdmin() {
   vi.mocked(api.getCurrentUser).mockResolvedValue(adminUser);
 
   fireEvent.click(
-    screen.getByRole("dialog").querySelector<HTMLButtonElement>('button[type="submit"]')!
+    screen
+      .getByRole("dialog")
+      .querySelector<HTMLButtonElement>('button[type="submit"]')!,
   );
 
   fireEvent.click(await screen.findByRole("link", { name: "Admin" }));
 
-  expect(await screen.findByRole("heading", { name: "Product management" }))
-    .toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Product management" }),
+  ).toBeInTheDocument();
 }
 
 describe("Storefront", () => {
@@ -164,14 +177,15 @@ describe("Storefront", () => {
     expect(
       await screen.findByRole("heading", { name: "Shop all products" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Lavender Soap" }))
-      .toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Lavender Soap" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("$8.50")).toBeInTheDocument();
     expect(screen.getByText("In stock")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in" }))
-      .toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Admin panel" }))
-      .not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Admin panel" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Product name")).not.toBeInTheDocument();
   });
 
@@ -184,8 +198,9 @@ describe("Storefront", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
-    expect(screen.getByRole("dialog", { name: "Sign in to Ledger" }))
-      .toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Sign in to Ledger" }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
   });
@@ -196,7 +211,9 @@ describe("Storefront", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close sign-in dialog" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close sign-in dialog" }),
+    );
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -206,20 +223,28 @@ describe("Storefront", () => {
 
     await screen.findByRole("heading", { name: "Lavender Soap" });
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search products" }), {
-      target: { value: "lavender" },
-    });
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search products" }),
+      {
+        target: { value: "lavender" },
+      },
+    );
 
-    expect(screen.getByRole("heading", { name: "Lavender Soap" }))
-      .toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Lavender Soap" }),
+    ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search products" }), {
-      target: { value: "mint" },
-    });
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search products" }),
+      {
+        target: { value: "mint" },
+      },
+    );
 
     await waitFor(() => {
-      expect(screen.queryByRole("heading", { name: "Lavender Soap" }))
-        .not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("heading", { name: "Lavender Soap" }),
+      ).not.toBeInTheDocument();
       expect(screen.getByText("No matching products")).toBeInTheDocument();
     });
   });
@@ -241,8 +266,9 @@ describe("Authentication and role-based access", () => {
 
     expect(screen.getByText("owner@example.com")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Admin" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Add a product" }))
-      .toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Add a product" }),
+    ).toBeInTheDocument();
     expect(api.login).toHaveBeenCalledWith(
       "owner@example.com",
       "correct-password",
@@ -252,17 +278,27 @@ describe("Authentication and role-based access", () => {
   it("keeps a regular signed-in user on the storefront without admin controls", async () => {
     await renderSignedIn(regularUser);
 
-    expect(screen.getByRole("heading", { name: "Shop all products" }))
-      .toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Admin panel" }))
-      .not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Shop all products" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Admin panel" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Admin" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Edit" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Sign out" }),
+    ).toBeInTheDocument();
   });
 
   it("shows an error when sign-in fails", async () => {
-    vi.mocked(api.login).mockRejectedValue(new Error("Invalid email or password."));
+    vi.mocked(api.login).mockRejectedValue(
+      new Error("Invalid email or password."),
+    );
 
     renderApp();
     fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
@@ -275,13 +311,17 @@ describe("Authentication and role-based access", () => {
     });
 
     fireEvent.click(
-      screen.getByRole("dialog").querySelector<HTMLButtonElement>('button[type="submit"]')!
+      screen
+        .getByRole("dialog")
+        .querySelector<HTMLButtonElement>('button[type="submit"]')!,
     );
 
-    expect(await screen.findByRole("alert"))
-      .toHaveTextContent("Invalid email or password.");
-    expect(screen.queryByRole("heading", { name: "Admin panel" }))
-      .not.toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Invalid email or password.",
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Admin panel" }),
+    ).not.toBeInTheDocument();
   });
 
   it("signs out and keeps the storefront visible", async () => {
@@ -290,14 +330,17 @@ describe("Authentication and role-based access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Sign in" }))
-        .toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Sign in" }),
+      ).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("heading", { name: "Shop all products" }))
-      .toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Admin panel" }))
-      .not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Shop all products" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Admin panel" }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -337,8 +380,9 @@ describe("Admin product management", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Product name"))
-        .toHaveValue("Lavender Soap");
+      expect(screen.getByLabelText("Product name")).toHaveValue(
+        "Lavender Soap",
+      );
     });
 
     fireEvent.change(screen.getByLabelText("Product name"), {
@@ -368,7 +412,10 @@ describe("Admin product management", () => {
   });
 
   it("does not delete a product when confirmation is declined", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => false));
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => false),
+    );
 
     await signInAsAdmin();
 
@@ -390,11 +437,12 @@ describe("Admin product management", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add product" }));
 
     expect(
-      await screen.findByText("Could not create product.", { selector: '[role="alert"]' })
+      await screen.findByText("Could not create product.", {
+        selector: '[role="alert"]',
+      }),
     ).toBeInTheDocument();
   });
 });
-
 
 describe("admin management actions", () => {
   const sampleOrder: AdminOrder = {
@@ -459,9 +507,7 @@ describe("admin management actions", () => {
 
     await renderAdminRoute("/admin/products");
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Unhide" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Unhide" }));
 
     await waitFor(() => {
       expect(api.setProductVisibility).toHaveBeenCalledWith("product-1", true);
@@ -535,7 +581,9 @@ describe("admin management actions", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Hide" }));
 
-    expect(await screen.findByText("Visibility update failed")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Visibility update failed"),
+    ).toBeInTheDocument();
   });
 
   it("shows an error when archiving an order fails", async () => {
@@ -557,6 +605,8 @@ describe("admin management actions", () => {
       await screen.findByRole("button", { name: "Archive order" }),
     );
 
-    expect(await screen.findByText("Archive update failed")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Archive update failed"),
+    ).toBeInTheDocument();
   });
 });

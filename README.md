@@ -1,6 +1,6 @@
 # Ledger
 
-Ledger is a full-stack storefront and order management application built for Pax Romana, a handmade soap business. Customers can browse products, manage a cart, calculate shipping, and pay through Stripe Checkout. The owner can manage products, storefront content, and customer orders through an authenticated admin area.
+Ledger is a full-stack storefront and order management application built for a configurable retail business. Customers can browse products, manage a cart, calculate shipping, and pay through Stripe Checkout. The owner can manage products, storefront content, and customer orders through an authenticated admin area.
 
 **Live storefront:** [https://paxromana.onrender.com/](https://paxromana.onrender.com/)  
 **API:** [https://ledger-0g6r.onrender.com](https://ledger-0g6r.onrender.com)  
