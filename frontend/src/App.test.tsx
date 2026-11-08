@@ -53,8 +53,8 @@ const regularUser: User = {
 };
 
 const testSiteSettings = {
-  pageTitle: "Ledger",
-  headerText: "Ledger",
+  pageTitle: "Test Store",
+  headerText: "Test Store",
   heroTitle: "Find something\\nworth keeping.",
   heroDescription:
     "Browse our collection and find just what you’re looking for.",
@@ -199,7 +199,7 @@ describe("Storefront", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
     expect(
-      screen.getByRole("dialog", { name: "Sign in to Ledger" }),
+      screen.getByRole("dialog", { name: "Sign in" }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();

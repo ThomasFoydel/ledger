@@ -2,24 +2,24 @@ import { describe, expect, it } from "vitest";
 import { resolveSiteSettingsImageUrl } from "./siteSettings";
 
 describe("resolveSiteSettingsImageUrl", () => {
-  const productionApi = "https://ledger-0g6r.onrender.com";
+  const apiOrigin = "https://api.example.com";
 
-  it("resolves stored API paths against the production API origin", () => {
+  it("resolves stored API paths against the API origin", () => {
     expect(
       resolveSiteSettingsImageUrl(
         "/api/site-settings/logo",
-        productionApi,
+        apiOrigin,
       ),
-    ).toBe(`${productionApi}/site-settings/logo`);
+    ).toBe(`${apiOrigin}/site-settings/logo`);
   });
 
-  it("resolves favicon paths against the production API origin", () => {
+  it("resolves favicon paths against the API origin", () => {
     expect(
       resolveSiteSettingsImageUrl(
         "/api/site-settings/favicon",
-        productionApi,
+        apiOrigin,
       ),
-    ).toBe(`${productionApi}/site-settings/favicon`);
+    ).toBe(`${apiOrigin}/site-settings/favicon`);
   });
 
   it("preserves the local development API proxy prefix", () => {
@@ -32,18 +32,18 @@ describe("resolveSiteSettingsImageUrl", () => {
     expect(
       resolveSiteSettingsImageUrl(
         "/site-settings/logo",
-        productionApi,
+        apiOrigin,
       ),
-    ).toBe(`${productionApi}/site-settings/logo`);
+    ).toBe(`${apiOrigin}/site-settings/logo`);
   });
 
   it("preserves already absolute URLs", () => {
     const url = "https://cdn.example.com/logo.png";
 
-    expect(resolveSiteSettingsImageUrl(url, productionApi)).toBe(url);
+    expect(resolveSiteSettingsImageUrl(url, apiOrigin)).toBe(url);
   });
 
   it("preserves null image URLs", () => {
-    expect(resolveSiteSettingsImageUrl(null, productionApi)).toBeNull();
+    expect(resolveSiteSettingsImageUrl(null, apiOrigin)).toBeNull();
   });
 });
