@@ -82,7 +82,7 @@ export default function CheckoutStatus({
               ) : (
                 <>
                   <h2>{checkoutStatus === "Pending" || checkoutStatus === "CheckoutFailed" ? "Payment not yet confirmed" : "Checking your payment…"}</h2>
-                  <p>Ledger confirms payment through a secure server-side notification. This page alone does not confirm payment.</p>
+                  <p>Payment is confirmed through a secure server-side notification. This page alone does not confirm payment.</p>
                   <button type="button" className="button button-secondary" onClick={() => window.location.reload()}>Check status again</button>
                   <Link className="continue-shopping-link" to="/">Continue shopping</Link>
                 </>

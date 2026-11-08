@@ -58,7 +58,7 @@ export default function LoginDialog({
           L
         </span>
         <p className="eyebrow">WELCOME BACK</p>
-        <h2 id="login-title">{isRegistering ? "Create your account" : "Sign in to Ledger"}</h2>
+        <h2 id="login-title">{isRegistering ? "Create your account" : "Sign in"}</h2>
         <p className="muted">
           {isRegistering
             ? "Create an account to place orders and track your purchases."
@@ -108,7 +108,7 @@ export default function LoginDialog({
         </form>
 
         <p className="auth-switch">
-          {isRegistering ? "Already have an account?" : "New to Ledger?"}{" "}
+          {isRegistering ? "Already have an account?" : "New here?"}{" "}
           <button
             type="button"
             className="auth-switch-button"
