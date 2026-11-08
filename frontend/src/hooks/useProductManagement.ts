@@ -199,6 +199,8 @@ export function useProductManagement({
           current.filter((item) => item.id !== product.id),
         );
 
+        if (isAdminProductsRoute) await loadAdminProducts();
+
         if (editingId === product.id) resetForm();
       } catch (err) {
         setError(
@@ -208,7 +210,15 @@ export function useProductManagement({
         setSubmitting(false);
       }
     },
-    [editingId, resetForm, setError, setProducts, setSubmitting],
+    [
+      editingId,
+      isAdminProductsRoute,
+      loadAdminProducts,
+      resetForm,
+      setError,
+      setProducts,
+      setSubmitting,
+    ],
   );
 
 
