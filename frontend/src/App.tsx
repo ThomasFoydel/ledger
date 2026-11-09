@@ -20,7 +20,7 @@ import { useStorefrontData } from "./hooks/useStorefrontData";
 
 const defaultSiteSettings: SiteSettings = {
   pageTitle: "",
-  headerText: "Ledger",
+  headerText: "",
   heroTitle: "Find something\nworth keeping.",
   heroDescription:
     "Browse our collection and find just what you’re looking for.",
@@ -124,7 +124,7 @@ function App() {
   });
 
   useEffect(() => {
-    document.title = siteSettings.pageTitle || "Ledger";
+    document.title = siteSettings.pageTitle || import.meta.env.VITE_SITE_TITLE || "";
   }, [siteSettings.pageTitle]);
 
   useEffect(() => {
