@@ -85,7 +85,7 @@ export default function ProductCatalog({
           {filteredProducts.map((product) => (
             <article className="product-card" key={product.id}>
               <Link
-                className="product-art product-art-link"
+                className={`product-art product-art-link${product.hasImage ? " product-art-has-image" : ""}`}
                 to={`/products/${encodeURIComponent(product.id)}`}
                 aria-label={`View ${product.name}`}
               >
